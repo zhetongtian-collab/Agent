@@ -12,3 +12,4 @@ class ChatResponse(BaseModel):
     session_id: str
     used_file_ids: list[int] = Field(default_factory=list)
     memories: list[str] = Field(default_factory=list)
+    artifacts: list[dict] = Field(default_factory=list)

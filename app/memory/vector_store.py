@@ -59,8 +59,9 @@ class VectorStore:
             metadatas=[{"file_id": file_id, "filename": filename} for _ in chunks],
         )
 
-    def search_documents(self, query: str, limit: int = 5) -> list[dict]:
-        result = self.documents.query(query_embeddings=[self.embedding.embed(query)], n_results=limit)
+    def search_documents(self, query: str, limit: int = 5, file_ids: list[int] | None = None) -> list[dict]:
+        where = {"file_id": {"$in": file_ids}} if file_ids else None
+        result = self.documents.query(query_embeddings=[self.embedding.embed(query)], n_results=limit, where=where)
         documents = result.get("documents", [[]])[0]
         metadatas = result.get("metadatas", [[]])[0]
         return [{"content": doc, **(meta or {})} for doc, meta in zip(documents, metadatas, strict=False)]

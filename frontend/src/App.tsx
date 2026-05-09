@@ -1,11 +1,12 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { FileText, Loader2, MessageSquare, Paperclip, RefreshCw, Send, Upload } from "lucide-react";
-import { FileInfo, MemoryInfo, listFiles, listMemories, sendChat, uploadFile } from "./api";
+import { ArtifactInfo, FileInfo, MemoryInfo, listFiles, listMemories, sendChat, uploadFile } from "./api";
 
 type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  artifacts?: ArtifactInfo[];
 };
 
 export function App() {
@@ -57,7 +58,7 @@ export function App() {
       const response = await sendChat(message, selectedFileIds);
       setMessages((current) => [
         ...current,
-        { id: crypto.randomUUID(), role: "assistant", content: response.answer }
+        { id: crypto.randomUUID(), role: "assistant", content: response.answer, artifacts: response.artifacts }
       ]);
       await refreshSidebars();
     } catch (error) {
@@ -158,7 +159,25 @@ export function App() {
         <div className="messages">
           {messages.map((message) => (
             <article key={message.id} className={`message ${message.role}`}>
-              <div className="bubble">{message.content}</div>
+              <div className="bubble">
+                <div>{message.content}</div>
+                {message.artifacts?.length ? (
+                  <div className="artifact-list">
+                    {message.artifacts.map((artifact) => (
+                      <a
+                        key={`${artifact.kind}-${artifact.id}`}
+                        className="artifact-link"
+                        href={artifact.download_url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <FileText size={16} />
+                        下载{artifact.kind === "word" ? " Word" : " Excel"}文件
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </article>
           ))}
           {busy && (

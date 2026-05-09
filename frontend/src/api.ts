@@ -18,6 +18,15 @@ export type ChatResponse = {
   session_id: string;
   used_file_ids: number[];
   memories: string[];
+  artifacts: ArtifactInfo[];
+};
+
+export type ArtifactInfo = {
+  id: number;
+  kind: string;
+  path?: string;
+  download_url: string;
+  absolute_download_url?: string;
 };
 
 export async function sendChat(message: string, fileIds: number[], sessionId = "default"): Promise<ChatResponse> {
