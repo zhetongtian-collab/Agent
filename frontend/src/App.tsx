@@ -8,7 +8,7 @@ import {
   deleteMemory,
   listFiles,
   listMemories,
-  sendChat,
+  streamChat,
   uploadFile
 } from "./api";
 
@@ -60,25 +60,47 @@ export function App() {
     const message = input.trim();
     if (!message || busy) return;
 
+    const assistantId = crypto.randomUUID();
     setInput("");
     setBusy(true);
-    setMessages((current) => [...current, { id: crypto.randomUUID(), role: "user", content: message }]);
+    setMessages((current) => [
+      ...current,
+      { id: crypto.randomUUID(), role: "user", content: message },
+      { id: assistantId, role: "assistant", content: "" }
+    ]);
 
     try {
-      const response = await sendChat(message, selectedFileIds);
-      setMessages((current) => [
-        ...current,
-        { id: crypto.randomUUID(), role: "assistant", content: response.answer, artifacts: response.artifacts }
-      ]);
+      await streamChat(message, selectedFileIds, (event) => {
+        if (event.type === "token") {
+          updateAssistantMessage(assistantId, (item) => ({ ...item, content: item.content + event.content }));
+        } else if (event.type === "artifact") {
+          updateAssistantMessage(assistantId, (item) => ({
+            ...item,
+            artifacts: appendArtifact(item.artifacts, event.artifact)
+          }));
+        } else if (event.type === "done") {
+          updateAssistantMessage(assistantId, (item) => ({
+            ...item,
+            content: event.answer || item.content,
+            artifacts: mergeArtifacts(item.artifacts, event.artifacts)
+          }));
+        } else if (event.type === "error") {
+          updateAssistantMessage(assistantId, (item) => ({
+            ...item,
+            content: item.content || `请求失败：${event.message}`
+          }));
+        }
+      });
       await refreshSidebars();
     } catch (error) {
-      setMessages((current) => [
-        ...current,
-        { id: crypto.randomUUID(), role: "assistant", content: `请求失败：${String(error)}` }
-      ]);
+      updateAssistantMessage(assistantId, (item) => ({ ...item, content: `请求失败：${String(error)}` }));
     } finally {
       setBusy(false);
     }
+  }
+
+  function updateAssistantMessage(id: string, updater: (message: Message) => Message) {
+    setMessages((current) => current.map((message) => (message.id === id ? updater(message) : message)));
   }
 
   async function handleUpload(fileList: FileList | null) {
@@ -197,6 +219,12 @@ export function App() {
             <article key={message.id} className={`message ${message.role}`}>
               <div className="bubble">
                 <div>{message.content}</div>
+                {message.role === "assistant" && busy && !message.content ? (
+                  <div className="thinking">
+                    <Loader2 className="spin" size={18} />
+                    正在处理
+                  </div>
+                ) : null}
                 {message.artifacts?.length ? (
                   <div className="artifact-list">
                     {message.artifacts.map((artifact) => (
@@ -216,14 +244,6 @@ export function App() {
               </div>
             </article>
           ))}
-          {busy && (
-            <article className="message assistant">
-              <div className="bubble thinking">
-                <Loader2 className="spin" size={18} />
-                正在处理
-              </div>
-            </article>
-          )}
           <div ref={messageEndRef} />
         </div>
 
@@ -250,4 +270,18 @@ export function App() {
       </section>
     </main>
   );
+}
+
+function appendArtifact(current: ArtifactInfo[] | undefined, artifact: ArtifactInfo): ArtifactInfo[] {
+  return mergeArtifacts(current, [artifact]);
+}
+
+function mergeArtifacts(current: ArtifactInfo[] | undefined, incoming: ArtifactInfo[] | undefined): ArtifactInfo[] {
+  const result = [...(current ?? [])];
+  for (const artifact of incoming ?? []) {
+    if (!result.some((item) => item.id === artifact.id && item.kind === artifact.kind)) {
+      result.push(artifact);
+    }
+  }
+  return result;
 }

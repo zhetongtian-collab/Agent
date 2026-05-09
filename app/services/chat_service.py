@@ -1,7 +1,10 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.agents.executor import build_agent_messages, run_office_agent
+from collections.abc import Iterator
+from typing import Any
+
+from app.agents.executor import build_agent_messages, run_office_agent, stream_office_agent
 from app.core.qwen_llm import get_qwen_chat_model
 from app.db.models import ChatMessage, FileRecord
 from app.memory.store import MemoryStore
@@ -17,36 +20,69 @@ class ChatService:
         self.vectors = VectorStore()
 
     def handle_chat(self, request: ChatRequest) -> ChatResponse:
-        file_context = self._load_file_context(request.file_ids)
-        memories = self.memory.search(request.message, limit=5)
-        retrieved_documents = self.vectors.search_documents(request.message, limit=5, file_ids=request.file_ids)
-        history = self._load_history(request.session_id, limit=8)
-
+        context = self._build_context(request)
         llm = get_qwen_chat_model()
         result = run_office_agent(
             model=llm,
             tools=build_office_tools(self.db, public_base_url="http://localhost:8000"),
-            messages=build_agent_messages(
-                user_message=request.message,
-                memories=[item.content for item in memories],
-                selected_files=file_context,
-                retrieved_documents=retrieved_documents,
-                history=history,
-            ),
+            messages=context["messages"],
         )
         answer = str(result["answer"])
 
-        self._save_message(request.session_id, "user", request.message)
-        self._save_message(request.session_id, "assistant", answer)
-        self.memory.maybe_update_from_conversation(request.message, answer)
+        self._save_after_response(request.session_id, request.message, answer)
 
         return ChatResponse(
             answer=answer,
             session_id=request.session_id,
             used_file_ids=request.file_ids,
-            memories=[item.content for item in memories],
+            memories=context["memory_contents"],
             artifacts=result.get("artifacts", []),
         )
+
+    def stream_chat(self, request: ChatRequest) -> Iterator[dict[str, Any]]:
+        context = self._build_context(request)
+        llm = get_qwen_chat_model()
+        answer = ""
+        artifacts: list[dict[str, Any]] = []
+
+        try:
+            for event in stream_office_agent(
+                model=llm,
+                tools=build_office_tools(self.db, public_base_url="http://localhost:8000"),
+                messages=context["messages"],
+            ):
+                if event["type"] == "token":
+                    answer += str(event["content"])
+                elif event["type"] == "artifact":
+                    artifact = event["artifact"]
+                    if artifact not in artifacts:
+                        artifacts.append(artifact)
+                elif event["type"] == "done":
+                    answer = str(event.get("answer") or answer)
+                    for artifact in event.get("artifacts", []):
+                        if artifact not in artifacts:
+                            artifacts.append(artifact)
+                yield event
+        finally:
+            if answer.strip():
+                self._save_after_response(request.session_id, request.message, answer)
+
+    def _build_context(self, request: ChatRequest) -> dict[str, Any]:
+        file_context = self._load_file_context(request.file_ids)
+        memories = self.memory.search(request.message, limit=5)
+        retrieved_documents = self.vectors.search_documents(request.message, limit=5, file_ids=request.file_ids)
+        history = self._load_history(request.session_id, limit=8)
+        memory_contents = [item.content for item in memories]
+        return {
+            "memory_contents": memory_contents,
+            "messages": build_agent_messages(
+                user_message=request.message,
+                memories=memory_contents,
+                selected_files=file_context,
+                retrieved_documents=retrieved_documents,
+                history=history,
+            ),
+        }
 
     def _load_file_context(self, file_ids: list[int]) -> list[FileRecord]:
         if not file_ids:
@@ -65,3 +101,8 @@ class ChatService:
     def _save_message(self, session_id: str, role: str, content: str) -> None:
         self.db.add(ChatMessage(session_id=session_id, role=role, content=content))
         self.db.commit()
+
+    def _save_after_response(self, session_id: str, user_message: str, answer: str) -> None:
+        self._save_message(session_id, "user", user_message)
+        self._save_message(session_id, "assistant", answer)
+        self.memory.maybe_update_from_conversation(user_message, answer)

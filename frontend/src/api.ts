@@ -41,6 +41,45 @@ export async function sendChat(message: string, fileIds: number[], sessionId = "
   return response.json();
 }
 
+export type ChatStreamEvent =
+  | { type: "token"; content: string }
+  | { type: "artifact"; artifact: ArtifactInfo }
+  | { type: "done"; answer: string; artifacts: ArtifactInfo[] }
+  | { type: "error"; message: string };
+
+export async function streamChat(
+  message: string,
+  fileIds: number[],
+  onEvent: (event: ChatStreamEvent) => void,
+  sessionId = "default"
+): Promise<void> {
+  const response = await fetch("/api/chat/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, file_ids: fileIds, session_id: sessionId })
+  });
+  if (!response.ok || !response.body) {
+    throw new Error(await response.text());
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+    for (const part of parts) {
+      const line = part.split("\n").find((item) => item.startsWith("data: "));
+      if (!line) continue;
+      onEvent(JSON.parse(line.slice(6)) as ChatStreamEvent);
+    }
+  }
+}
+
 export async function uploadFile(file: File): Promise<FileInfo> {
   const data = new FormData();
   data.append("file", file);

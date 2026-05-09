@@ -1,8 +1,9 @@
 import json
+from collections.abc import Iterator
 from typing import Any
 
 from langchain.agents import create_agent
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool
 
 from app.db.models import ChatMessage, FileRecord
@@ -32,6 +33,37 @@ def run_office_agent(model: Any, tools: list[BaseTool], messages: list[BaseMessa
     answer = _last_ai_text(output_messages)
     artifacts = _extract_artifacts(output_messages)
     return {"answer": answer, "artifacts": artifacts, "messages": output_messages}
+
+
+def stream_office_agent(model: Any, tools: list[BaseTool], messages: list[BaseMessage]) -> Iterator[dict[str, Any]]:
+    agent = create_agent(model=model, tools=tools, system_prompt=AGENT_SYSTEM_PROMPT)
+    collected_messages: list[BaseMessage] = []
+    answer_parts: list[str] = []
+
+    for event in agent.stream({"messages": messages}, stream_mode=["messages", "updates"]):
+        mode, payload = _normalize_stream_event(event)
+        if mode == "messages":
+            message = _message_from_payload(payload)
+            if message is None:
+                continue
+            if isinstance(message, AIMessageChunk):
+                token = _content_to_text(message.content)
+                if token:
+                    answer_parts.append(token)
+                    yield {"type": "token", "content": token}
+            elif isinstance(message, ToolMessage):
+                collected_messages.append(message)
+                artifact = _extract_artifact_from_text(_content_to_text(message.content))
+                if artifact:
+                    yield {"type": "artifact", "artifact": artifact}
+            elif isinstance(message, BaseMessage):
+                collected_messages.append(message)
+        elif mode == "updates":
+            collected_messages.extend(_messages_from_update(payload))
+
+    artifacts = _extract_artifacts(collected_messages)
+    answer = "".join(answer_parts).strip() or _last_ai_text(collected_messages)
+    yield {"type": "done", "answer": answer, "artifacts": artifacts}
 
 
 def build_agent_messages(
@@ -113,3 +145,34 @@ def _extract_artifact_from_text(text: str) -> dict[str, Any] | None:
     if isinstance(data, dict) and isinstance(data.get("artifact"), dict):
         return data["artifact"]
     return None
+
+
+def _normalize_stream_event(event: Any) -> tuple[str, Any]:
+    if isinstance(event, tuple) and len(event) == 2:
+        first, second = event
+        if first in {"messages", "updates"}:
+            return str(first), second
+        if isinstance(first, BaseMessage):
+            return "messages", first
+    if isinstance(event, dict):
+        return "updates", event
+    return "unknown", event
+
+
+def _message_from_payload(payload: Any) -> BaseMessage | None:
+    if isinstance(payload, tuple) and payload:
+        candidate = payload[0]
+        return candidate if isinstance(candidate, BaseMessage) else None
+    return payload if isinstance(payload, BaseMessage) else None
+
+
+def _messages_from_update(payload: Any) -> list[BaseMessage]:
+    messages: list[BaseMessage] = []
+    if not isinstance(payload, dict):
+        return messages
+    for value in payload.values():
+        if isinstance(value, dict) and isinstance(value.get("messages"), list):
+            messages.extend(item for item in value["messages"] if isinstance(item, BaseMessage))
+        elif isinstance(value, list):
+            messages.extend(item for item in value if isinstance(item, BaseMessage))
+    return messages
