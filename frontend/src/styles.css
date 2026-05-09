@@ -107,24 +107,54 @@ textarea {
 
 .file-row {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 30px;
   align-items: center;
   gap: 8px;
   width: 100%;
   min-height: 42px;
-  padding: 9px 10px;
+  padding: 5px 6px;
   border: 1px solid #d5dbcf;
   border-radius: 8px;
   background: #ffffff;
   color: #25332b;
+}
+
+.file-select {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 30px;
+  border: 0;
+  background: transparent;
+  color: inherit;
   text-align: left;
   cursor: pointer;
 }
 
-.file-row span {
+.file-select span {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.file-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #7b4942;
+  cursor: pointer;
+}
+
+.file-delete:hover {
+  background: #f8e8e5;
+  color: #9d2418;
 }
 
 .file-row.selected {

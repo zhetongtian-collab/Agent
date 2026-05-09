@@ -59,6 +59,9 @@ class VectorStore:
             metadatas=[{"file_id": file_id, "filename": filename} for _ in chunks],
         )
 
+    def delete_document_chunks(self, file_id: int) -> None:
+        self.documents.delete(where={"file_id": file_id})
+
     def search_documents(self, query: str, limit: int = 5, file_ids: list[int] | None = None) -> list[dict]:
         where = {"file_id": {"$in": file_ids}} if file_ids else None
         result = self.documents.query(query_embeddings=[self.embedding.embed(query)], n_results=limit, where=where)

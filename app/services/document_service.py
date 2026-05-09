@@ -1,7 +1,7 @@
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -35,6 +35,19 @@ class DocumentService:
         chunks = _chunk_text(text)
         VectorStore().upsert_document_chunks(record.id, record.filename, chunks)
         return record
+
+    def delete_file(self, file_id: int) -> None:
+        record = self.db.get(FileRecord, file_id)
+        if not record:
+            raise HTTPException(status_code=404, detail="file not found")
+
+        path = Path(record.path)
+        if path.exists() and path.is_file():
+            path.unlink()
+
+        VectorStore().delete_document_chunks(file_id)
+        self.db.delete(record)
+        self.db.commit()
 
 
 def _chunk_text(text: str, size: int = 1200, overlap: int = 150) -> list[str]:

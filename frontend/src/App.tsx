@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { FileText, Loader2, MessageSquare, Paperclip, RefreshCw, Send, Upload } from "lucide-react";
-import { ArtifactInfo, FileInfo, MemoryInfo, listFiles, listMemories, sendChat, uploadFile } from "./api";
+import { FileText, Loader2, MessageSquare, Paperclip, RefreshCw, Send, Trash2, Upload } from "lucide-react";
+import { ArtifactInfo, FileInfo, MemoryInfo, deleteFile, listFiles, listMemories, sendChat, uploadFile } from "./api";
 
 type Message = {
   id: string;
@@ -85,6 +85,12 @@ export function App() {
     }
   }
 
+  async function handleDeleteFile(fileId: number) {
+    await deleteFile(fileId);
+    setFiles((current) => current.filter((file) => file.id !== fileId));
+    setSelectedFileIds((current) => current.filter((id) => id !== fileId));
+  }
+
   function toggleFile(id: number) {
     setSelectedFileIds((current) =>
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
@@ -115,15 +121,20 @@ export function App() {
           />
           <div className="list">
             {files.map((file) => (
-              <button
-                key={file.id}
-                className={`file-row ${selectedFileIds.includes(file.id) ? "selected" : ""}`}
-                onClick={() => toggleFile(file.id)}
-                title={file.filename}
-              >
-                <FileText size={17} />
-                <span>{file.filename}</span>
-              </button>
+              <div key={file.id} className={`file-row ${selectedFileIds.includes(file.id) ? "selected" : ""}`}>
+                <button className="file-select" onClick={() => toggleFile(file.id)} title={file.filename}>
+                  <FileText size={17} />
+                  <span>{file.filename}</span>
+                </button>
+                <button
+                  className="file-delete"
+                  onClick={() => handleDeleteFile(file.id)}
+                  title="删除文件"
+                  aria-label={`删除 ${file.filename}`}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             ))}
           </div>
         </section>

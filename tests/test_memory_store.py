@@ -34,3 +34,13 @@ def test_vector_store_can_filter_document_chunks_by_file_id(tmp_path) -> None:
 
     assert results
     assert all(item["file_id"] == 2 for item in results)
+
+
+def test_vector_store_can_delete_document_chunks(tmp_path) -> None:
+    store = VectorStore(tmp_path / "delete-chroma")
+    store.upsert_document_chunks(1, "first.txt", ["项目名称：第一个文件"])
+    store.delete_document_chunks(1)
+
+    results = store.search_documents("第一个文件")
+
+    assert results == []

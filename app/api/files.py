@@ -41,6 +41,11 @@ def list_files(db: Session = Depends(get_db)) -> list[FileInfo]:
     ]
 
 
+@router.delete("/{file_id}", status_code=204)
+def delete_file(file_id: int, db: Session = Depends(get_db)) -> None:
+    DocumentService(db).delete_file(file_id)
+
+
 @router.post("/export", response_model=ArtifactInfo)
 def export_file(request: ExportRequest, db: Session = Depends(get_db)) -> ArtifactInfo:
     if request.kind == "word":

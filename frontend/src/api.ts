@@ -59,6 +59,13 @@ export async function listFiles(): Promise<FileInfo[]> {
   return response.json();
 }
 
+export async function deleteFile(fileId: number): Promise<void> {
+  const response = await fetch(`/api/files/${fileId}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+}
+
 export async function listMemories(): Promise<MemoryInfo[]> {
   const response = await fetch("/api/memory");
   if (!response.ok) {
