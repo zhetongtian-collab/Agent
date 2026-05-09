@@ -44,3 +44,19 @@ def test_vector_store_can_delete_document_chunks(tmp_path) -> None:
     results = store.search_documents("第一个文件")
 
     assert results == []
+
+
+def test_memory_store_delete_removes_db_record_and_vector(tmp_path) -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    vector_store = VectorStore(tmp_path / "delete-memory-chroma")
+
+    with Session(engine) as db:
+        store = MemoryStore(db, vector_store=vector_store)
+        record = store.add("用户偏好：生成报告")
+        memory_id = record.id
+
+        store.delete(memory_id)
+
+        assert db.get(MemoryRecord, memory_id) is None
+        assert vector_store.search_memories("生成报告") == []

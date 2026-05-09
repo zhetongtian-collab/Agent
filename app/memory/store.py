@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -35,6 +36,15 @@ class MemoryStore:
         self.db.refresh(record)
         self.vector_store.upsert_memory(record.id, vector_id, normalized)
         return record
+
+    def delete(self, memory_id: int) -> None:
+        record = self.db.get(MemoryRecord, memory_id)
+        if not record:
+            raise HTTPException(status_code=404, detail="memory not found")
+        if record.vector_id:
+            self.vector_store.delete_memory(record.vector_id)
+        self.db.delete(record)
+        self.db.commit()
 
     def maybe_update_from_conversation(self, user_message: str, answer: str) -> None:
         markers = ["我叫", "我是", "我的", "公司", "项目", "偏好", "以后", "记住"]

@@ -73,3 +73,10 @@ export async function listMemories(): Promise<MemoryInfo[]> {
   }
   return response.json();
 }
+
+export async function deleteMemory(memoryId: number): Promise<void> {
+  const response = await fetch(`/api/memory/${memoryId}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+}

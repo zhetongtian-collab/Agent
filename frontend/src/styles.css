@@ -167,15 +167,40 @@ textarea {
   min-height: 160px;
 }
 
-.memory-list p {
-  margin: 0;
-  padding: 10px;
+.memory-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  gap: 6px;
+  align-items: start;
   border: 1px solid #d9ddd0;
   border-radius: 8px;
   background: #ffffff;
+  padding: 8px;
+}
+
+.memory-row p {
+  margin: 0;
   color: #475248;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.memory-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #7b4942;
+  cursor: pointer;
+}
+
+.memory-delete:hover {
+  background: #f8e8e5;
+  color: #9d2418;
 }
 
 .chat {

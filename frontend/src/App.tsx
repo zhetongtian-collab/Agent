@@ -1,6 +1,16 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { FileText, Loader2, MessageSquare, Paperclip, RefreshCw, Send, Trash2, Upload } from "lucide-react";
-import { ArtifactInfo, FileInfo, MemoryInfo, deleteFile, listFiles, listMemories, sendChat, uploadFile } from "./api";
+import {
+  ArtifactInfo,
+  FileInfo,
+  MemoryInfo,
+  deleteFile,
+  deleteMemory,
+  listFiles,
+  listMemories,
+  sendChat,
+  uploadFile
+} from "./api";
 
 type Message = {
   id: string;
@@ -91,6 +101,11 @@ export function App() {
     setSelectedFileIds((current) => current.filter((id) => id !== fileId));
   }
 
+  async function handleDeleteMemory(memoryId: number) {
+    await deleteMemory(memoryId);
+    setMemories((current) => current.filter((memory) => memory.id !== memoryId));
+  }
+
   function toggleFile(id: number) {
     setSelectedFileIds((current) =>
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
@@ -148,7 +163,17 @@ export function App() {
           </div>
           <div className="memory-list">
             {memories.map((memory) => (
-              <p key={memory.id}>{memory.content}</p>
+              <div key={memory.id} className="memory-row">
+                <p>{memory.content}</p>
+                <button
+                  className="memory-delete"
+                  onClick={() => handleDeleteMemory(memory.id)}
+                  title="删除记忆"
+                  aria-label="删除记忆"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
             ))}
           </div>
         </section>

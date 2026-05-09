@@ -42,6 +42,9 @@ class VectorStore:
             metadatas=[{"memory_id": memory_id}],
         )
 
+    def delete_memory(self, vector_id: str) -> None:
+        self.memories.delete(ids=[vector_id])
+
     def search_memories(self, query: str, limit: int = 5) -> list[dict]:
         result = self.memories.query(query_embeddings=[self.embedding.embed(query)], n_results=limit)
         documents = result.get("documents", [[]])[0]
