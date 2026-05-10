@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.db.database import Base
-from app.db.models import ChatMessage, FileRecord
+from app.db.models import FileRecord
 from app.schemas.chat import ChatRequest
 from app.services.chat_service import ChatService
 
@@ -13,9 +13,10 @@ def test_chat_service_uses_file_context(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
 
-    def fake_run_office_agent(model, tools, messages):
-        content = "\n".join(message.content for message in messages)
-        assert "quarterly report" in content
+    def fake_run_office_agent(model, tools, messages, session_id, runtime_context=None):
+        assert messages[0].content == "summarize file"
+        assert session_id == "default"
+        assert "quarterly report" in runtime_context["extra_context"]
         return {"answer": "analyzed from file", "artifacts": []}
 
     monkeypatch.setattr("app.services.chat_service.get_qwen_chat_model", lambda: SimpleNamespace())
@@ -47,7 +48,7 @@ def test_chat_service_limits_vector_search_to_selected_files(monkeypatch) -> Non
     monkeypatch.setattr("app.services.chat_service.get_qwen_chat_model", lambda: SimpleNamespace())
     monkeypatch.setattr(
         "app.services.chat_service.run_office_agent",
-        lambda model, tools, messages: {"answer": "ok", "artifacts": []},
+        lambda model, tools, messages, session_id, runtime_context=None: {"answer": "ok", "artifacts": []},
     )
     monkeypatch.setattr("app.services.chat_service.VectorStore", FakeVectorStore)
 
@@ -64,21 +65,31 @@ def test_chat_service_limits_vector_search_to_selected_files(monkeypatch) -> Non
     assert captured["file_ids"] == [second_id]
 
 
-def test_chat_service_stream_saves_final_answer(monkeypatch) -> None:
+def test_chat_service_stream_uses_session_checkpoint_context(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
+    captured = {}
 
-    def fake_stream_office_agent(model, tools, messages):
+    class FakeVectorStore:
+        def search_documents(self, query, limit=5, file_ids=None):
+            return []
+
+    def fake_stream_office_agent(model, tools, messages, session_id, runtime_context=None):
+        captured["message"] = messages[0].content
+        captured["session_id"] = session_id
+        captured["runtime_context"] = runtime_context
         yield {"type": "token", "content": "hello"}
         yield {"type": "token", "content": " world"}
         yield {"type": "done", "answer": "hello world", "artifacts": []}
 
     monkeypatch.setattr("app.services.chat_service.get_qwen_chat_model", lambda: SimpleNamespace())
     monkeypatch.setattr("app.services.chat_service.stream_office_agent", fake_stream_office_agent)
+    monkeypatch.setattr("app.services.chat_service.VectorStore", FakeVectorStore)
 
     with Session(engine) as db:
-        events = list(ChatService(db).stream_chat(ChatRequest(message="hi")))
-        saved = db.query(ChatMessage).all()
+        events = list(ChatService(db).stream_chat(ChatRequest(message="hi", session_id="thread-1")))
 
     assert events[-1]["type"] == "done"
-    assert [item.content for item in saved] == ["hi", "hello world"]
+    assert captured["message"] == "hi"
+    assert captured["session_id"] == "thread-1"
+    assert captured["runtime_context"]["extra_context"] == ""

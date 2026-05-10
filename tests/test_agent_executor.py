@@ -2,22 +2,46 @@ import json
 
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 
-from app.agents.executor import _extract_artifacts, _message_from_payload, _normalize_stream_event, build_agent_messages
+from app.agents.executor import (
+    _extract_artifacts,
+    _inject_context_message,
+    _message_from_payload,
+    _normalize_stream_event,
+    build_agent_messages,
+    build_runtime_context,
+)
 from app.db.models import FileRecord
 
 
-def test_build_agent_messages_includes_context() -> None:
-    messages = build_agent_messages(
-        user_message="生成报告",
-        memories=["用户喜欢表格"],
-        selected_files=[FileRecord(id=1, filename="demo.txt", path="demo.txt", extracted_text="季度报告")],
-        retrieved_documents=[{"file_id": 1, "filename": "demo.txt", "content": "收入增长"}],
-        history=[],
+def test_build_agent_messages_only_includes_current_user_message() -> None:
+    messages = build_agent_messages(user_message="generate report")
+
+    assert len(messages) == 1
+    assert isinstance(messages[0], HumanMessage)
+    assert messages[0].content == "generate report"
+
+
+def test_build_runtime_context_includes_memory_and_file_context() -> None:
+    context = build_runtime_context(
+        memories=["user prefers tables"],
+        selected_files=[FileRecord(id=1, filename="demo.txt", path="demo.txt", extracted_text="quarterly report")],
+        retrieved_documents=[{"file_id": 1, "filename": "demo.txt", "content": "revenue increased"}],
     )
 
-    assert isinstance(messages[-1], HumanMessage)
-    assert "季度报告" in messages[-1].content
-    assert "用户喜欢表格" in messages[-1].content
+    assert "user prefers tables" in context["extra_context"]
+    assert "quarterly report" in context["extra_context"]
+    assert "revenue increased" in context["extra_context"]
+
+
+def test_inject_context_message_binds_context_to_current_user_message() -> None:
+    messages = build_agent_messages(user_message="summarize this")
+
+    injected = _inject_context_message(messages, "selected file content")
+
+    assert len(injected) == 1
+    assert isinstance(injected[0], HumanMessage)
+    assert "selected file content" in injected[0].content
+    assert "summarize this" in injected[0].content
 
 
 def test_extract_artifacts_from_tool_messages() -> None:
@@ -32,7 +56,7 @@ def test_extract_artifacts_from_tool_messages() -> None:
         },
         ensure_ascii=False,
     )
-    artifacts = _extract_artifacts([ToolMessage(content=content, tool_call_id="1"), AIMessage(content="完成")])
+    artifacts = _extract_artifacts([ToolMessage(content=content, tool_call_id="1"), AIMessage(content="done")])
     assert artifacts[0]["kind"] == "word"
 
 

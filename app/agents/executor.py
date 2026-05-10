@@ -3,16 +3,16 @@ from collections.abc import Iterator
 from typing import Any
 
 from langchain.agents import create_agent
+from langchain.agents.middleware import wrap_model_call
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool
+from langgraph.checkpoint.memory import InMemorySaver
 
-from app.db.models import ChatMessage, FileRecord
+from app.db.models import FileRecord
 
 
 AGENT_SYSTEM_PROMPT = """你是一个可以自主调用工具的智能办公 Agent。
-
 你可以处理 Word、Excel、PDF、TXT、CSV 等办公文件。
-
 工作规则：
 1. 需要了解已上传文件时，先调用 list_uploaded_files。
 2. 需要读取指定文件内容时，调用 read_file。
@@ -22,25 +22,69 @@ AGENT_SYSTEM_PROMPT = """你是一个可以自主调用工具的智能办公 Age
 6. 需要生成 Excel 文件时，必须调用 generate_excel_table，不要假装已经生成。
 7. 发现用户明确要求保存长期偏好、身份、项目背景时，调用 save_memory。
 8. 工具返回 download_url 时，最终回答必须把下载链接告诉用户。
-9. 不要编造文件中不存在的数据。信息不足时说明缺口，并提出下一步。
-"""
+9. 不要编造文件中不存在的数据。信息不足时说明缺口，并提出下一步。"""
 
 
-def run_office_agent(model: Any, tools: list[BaseTool], messages: list[BaseMessage]) -> dict[str, Any]:
-    agent = create_agent(model=model, tools=tools, system_prompt=AGENT_SYSTEM_PROMPT)
-    result = agent.invoke({"messages": messages})
+CHECKPOINTER = InMemorySaver()
+
+
+@wrap_model_call
+def inject_runtime_context(request: Any, handler: Any) -> Any:
+    context = getattr(request.runtime, "context", None) or {}
+    extra_context = str(context.get("extra_context") or "").strip()
+    if extra_context:
+        request = request.override(messages=_inject_context_message(request.messages, extra_context))
+    return handler(request)
+
+
+def run_office_agent(
+    model: Any,
+    tools: list[BaseTool],
+    messages: list[BaseMessage],
+    session_id: str,
+    runtime_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    agent = create_agent(
+        model=model,
+        tools=tools,
+        system_prompt=AGENT_SYSTEM_PROMPT,
+        middleware=[inject_runtime_context],
+        checkpointer=CHECKPOINTER,
+    )
+    result = agent.invoke(
+        {"messages": messages},
+        config={"configurable": {"thread_id": session_id}},
+        context=runtime_context or {},
+    )
     output_messages = result.get("messages", []) if isinstance(result, dict) else []
     answer = _last_ai_text(output_messages)
     artifacts = _extract_artifacts(output_messages)
     return {"answer": answer, "artifacts": artifacts, "messages": output_messages}
 
 
-def stream_office_agent(model: Any, tools: list[BaseTool], messages: list[BaseMessage]) -> Iterator[dict[str, Any]]:
-    agent = create_agent(model=model, tools=tools, system_prompt=AGENT_SYSTEM_PROMPT)
+def stream_office_agent(
+    model: Any,
+    tools: list[BaseTool],
+    messages: list[BaseMessage],
+    session_id: str,
+    runtime_context: dict[str, Any] | None = None,
+) -> Iterator[dict[str, Any]]:
+    agent = create_agent(
+        model=model,
+        tools=tools,
+        system_prompt=AGENT_SYSTEM_PROMPT,
+        middleware=[inject_runtime_context],
+        checkpointer=CHECKPOINTER,
+    )
     collected_messages: list[BaseMessage] = []
     answer_parts: list[str] = []
 
-    for event in agent.stream({"messages": messages}, stream_mode=["messages", "updates"]):
+    for event in agent.stream(
+        {"messages": messages},
+        config={"configurable": {"thread_id": session_id}},
+        context=runtime_context or {},
+        stream_mode=["messages", "updates"],
+    ):
         mode, payload = _normalize_stream_event(event)
         if mode == "messages":
             message = _message_from_payload(payload)
@@ -66,27 +110,16 @@ def stream_office_agent(model: Any, tools: list[BaseTool], messages: list[BaseMe
     yield {"type": "done", "answer": answer, "artifacts": artifacts}
 
 
-def build_agent_messages(
-    user_message: str,
+def build_agent_messages(user_message: str) -> list[BaseMessage]:
+    return [HumanMessage(content=user_message)]
+
+
+def build_runtime_context(
     memories: list[str],
     selected_files: list[FileRecord],
     retrieved_documents: list[dict],
-    history: list[ChatMessage],
-) -> list[BaseMessage]:
-    messages: list[BaseMessage] = []
-    for item in history:
-        if item.role == "user":
-            messages.append(HumanMessage(content=item.content))
-        elif item.role == "assistant":
-            messages.append(AIMessage(content=item.content))
-
-    context = _build_context(memories, selected_files, retrieved_documents)
-    if context:
-        content = f"{context}\n\n用户当前任务：{user_message}"
-    else:
-        content = user_message
-    messages.append(HumanMessage(content=content))
-    return messages
+) -> dict[str, str]:
+    return {"extra_context": _build_context(memories, selected_files, retrieved_documents)}
 
 
 def _build_context(memories: list[str], selected_files: list[FileRecord], retrieved_documents: list[dict]) -> str:
@@ -104,6 +137,17 @@ def _build_context(memories: list[str], selected_files: list[FileRecord], retrie
             chunks.append(f"文件ID {item.get('file_id')}，文件名：{item.get('filename')}\n{item.get('content', '')[:1200]}")
         parts.append("\n\n".join(chunks))
     return "\n\n".join(parts)
+
+
+def _inject_context_message(messages: list[BaseMessage], extra_context: str) -> list[BaseMessage]:
+    for index in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[index], HumanMessage):
+            original = _content_to_text(messages[index].content)
+            current_message = HumanMessage(
+                content=f"本轮临时上下文：\n{extra_context}\n\n用户当前任务：\n{original}"
+            )
+            return [*messages[:index], current_message, *messages[index + 1 :]]
+    return [HumanMessage(content=f"本轮临时上下文：\n{extra_context}"), *messages]
 
 
 def _last_ai_text(messages: list[BaseMessage]) -> str:

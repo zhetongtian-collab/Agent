@@ -4,13 +4,12 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e6be2a64-bc75-48b9-a5bc-e682a11cefb9" name="更改" comment="第四次提交，自动化智能体版本，功能几近完美">
+    <list default="true" id="e6be2a64-bc75-48b9-a5bc-e682a11cefb9" name="更改" comment="暂时完美的项目">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/agents/executor.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/agents/executor.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/chat.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/chat.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/agents/office_agent.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/db/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/db/models.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/services/chat_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/chat_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/api.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/api.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tests/test_agent_executor.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_agent_executor.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tests/test_chat_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_chat_service.py" afterDir="false" />
     </list>
@@ -26,7 +25,7 @@
     </option>
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="482" />
+    <option name="cachedIndexableFilesCount" value="488" />
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -44,25 +43,30 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
-    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;ts.external.directory.path&quot;: &quot;D:\\tmp\\LongChain-Project\\frontend\\node_modules\\typescript\\lib&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "git-widget-placeholder": "master",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "ts.external.directory.path": "D:\\tmp\\LongChain-Project\\frontend\\node_modules\\typescript\\lib",
+    "vue.rearranger.settings.migration": "true"
+  },
+  "keyToStringList": {
+    "DatabaseDriversLRU": [
+      "sqlite"
+    ]
   }
-}</component>
+}]]></component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -78,7 +82,11 @@
       <option name="presentableId" value="Default" />
       <updated>1778317889610</updated>
       <workItem from="1778317890609" duration="4310000" />
-      <workItem from="1778322224031" duration="2090000" />
+      <workItem from="1778322224031" duration="2369000" />
+      <workItem from="1778324672295" duration="49000" />
+      <workItem from="1778378348899" duration="59000" />
+      <workItem from="1778379027853" duration="266000" />
+      <workItem from="1778379325989" duration="4549000" />
     </task>
     <task id="LOCAL-00001" summary="第一次提交">
       <option name="closed" value="true" />
@@ -112,7 +120,15 @@
       <option name="project" value="LOCAL" />
       <updated>1778323936283</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="暂时完美的项目">
+      <option name="closed" value="true" />
+      <created>1778324598260</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1778324598260</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -123,6 +139,7 @@
     <MESSAGE value="第二次提交，自动化智能体版本" />
     <MESSAGE value="第三次提交，自动化智能体版本，增加文件删除" />
     <MESSAGE value="第四次提交，自动化智能体版本，功能几近完美" />
-    <option name="LAST_COMMIT_MESSAGE" value="第四次提交，自动化智能体版本，功能几近完美" />
+    <MESSAGE value="暂时完美的项目" />
+    <option name="LAST_COMMIT_MESSAGE" value="暂时完美的项目" />
   </component>
 </project>
