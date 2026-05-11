@@ -29,6 +29,11 @@ CHECKPOINTER = InMemorySaver()
 
 
 @wrap_model_call
+# 这个函数是 LangChain Agent 的模型调用中间件。
+# 每次 Agent 准备调用大模型前，都会先经过这里：
+# 1. 从 request.runtime.context 里取出本轮临时上下文；
+# 2. 如果有文件内容、记忆或检索片段，就把它们插入到最后一条用户消息前面；
+# 3. 最后再把处理后的请求交给原来的 handler 继续调用模型。
 def inject_runtime_context(request: Any, handler: Any) -> Any:
     context = getattr(request.runtime, "context", None) or {}
     extra_context = str(context.get("extra_context") or "").strip()
@@ -37,6 +42,12 @@ def inject_runtime_context(request: Any, handler: Any) -> Any:
     return handler(request)
 
 
+# 同步运行办公 Agent，并一次性拿到完整结果。
+# 调用方需要传入大模型、可用工具、对话消息和 session_id。
+# 函数内部会创建 Agent、执行 invoke，然后从 Agent 返回的消息里提取：
+# 1. 最终回答文本；
+# 2. 工具生成的文件 artifact 信息；
+# 3. 完整消息列表，方便后续调试或继续对话。
 def run_office_agent(
     model: Any,
     tools: list[BaseTool],
@@ -62,6 +73,11 @@ def run_office_agent(
     return {"answer": answer, "artifacts": artifacts, "messages": output_messages}
 
 
+# 流式运行办公 Agent，适合前端边生成边展示。
+# 它会监听 Agent 的 stream 事件：
+# 1. 遇到 AIMessageChunk 时，把增量文本 token 逐段 yield 出去；
+# 2. 遇到工具消息时，尝试解析是否生成了可下载文件；
+# 3. 流结束后再汇总完整答案和所有 artifact，发送 done 事件。
 def stream_office_agent(
     model: Any,
     tools: list[BaseTool],
@@ -110,10 +126,16 @@ def stream_office_agent(
     yield {"type": "done", "answer": answer, "artifacts": artifacts}
 
 
+# 把普通字符串形式的用户输入包装成 LangChain 需要的消息对象。
+# 目前只生成一条 HumanMessage，后续如果要加入历史消息，也可以从这里扩展。
 def build_agent_messages(user_message: str) -> list[BaseMessage]:
     return [HumanMessage(content=user_message)]
 
 
+# 构造 Agent 运行时上下文。
+# memories 是长期记忆，selected_files 是用户本轮指定的文件，
+# retrieved_documents 是向量检索出来的相关文档片段。
+# 这些内容会合并成 extra_context，之后由中间件注入到模型输入中。
 def build_runtime_context(
     memories: list[str],
     selected_files: list[FileRecord],
@@ -122,6 +144,11 @@ def build_runtime_context(
     return {"extra_context": _build_context(memories, selected_files, retrieved_documents)}
 
 
+# 把记忆、选中文件和检索片段拼成一段给模型看的上下文文本。
+# 这里不会调用模型，只负责组织提示信息：
+# 1. 长期记忆用列表展示；
+# 2. 选中文件带上文件 ID、文件名和内容预览；
+# 3. 检索片段带上来源文件和相关内容。
 def _build_context(memories: list[str], selected_files: list[FileRecord], retrieved_documents: list[dict]) -> str:
     parts = []
     if memories:
@@ -139,6 +166,9 @@ def _build_context(memories: list[str], selected_files: list[FileRecord], retrie
     return "\n\n".join(parts)
 
 
+# 把额外上下文真正插入到消息列表里。
+# 优先找到最后一条 HumanMessage，把上下文放在用户当前任务前面；
+# 如果消息列表里没有用户消息，就新建一条 HumanMessage 放到最前面。
 def _inject_context_message(messages: list[BaseMessage], extra_context: str) -> list[BaseMessage]:
     for index in range(len(messages) - 1, -1, -1):
         if isinstance(messages[index], HumanMessage):
@@ -150,6 +180,9 @@ def _inject_context_message(messages: list[BaseMessage], extra_context: str) -> 
     return [HumanMessage(content=f"本轮临时上下文：\n{extra_context}"), *messages]
 
 
+# 从一组消息中倒序查找最后一条 AIMessage，并转成纯文本。
+# Agent 返回的 messages 里可能包含工具消息、用户消息和 AI 消息，
+# 最后一条有内容的 AI 消息通常就是最终回答。
 def _last_ai_text(messages: list[BaseMessage]) -> str:
     for message in reversed(messages):
         if isinstance(message, AIMessage) and message.content:
@@ -157,6 +190,9 @@ def _last_ai_text(messages: list[BaseMessage]) -> str:
     return ""
 
 
+# 把 LangChain 消息里的 content 统一转换为字符串。
+# content 有时是普通字符串，有时是包含 text 字段的列表结构；
+# 统一处理后，其他函数就不用关心 content 的具体格式。
 def _content_to_text(content: Any) -> str:
     if isinstance(content, str):
         return content
@@ -171,6 +207,9 @@ def _content_to_text(content: Any) -> str:
     return str(content)
 
 
+# 从所有消息里提取工具生成的 artifact 信息。
+# 工具返回内容可能是 JSON 字符串，如果其中包含 artifact 字段，
+# 就收集起来，并避免重复添加同一个 artifact。
 def _extract_artifacts(messages: list[BaseMessage]) -> list[dict[str, Any]]:
     artifacts: list[dict[str, Any]] = []
     for message in messages:
@@ -181,6 +220,9 @@ def _extract_artifacts(messages: list[BaseMessage]) -> list[dict[str, Any]]:
     return artifacts
 
 
+# 尝试从一段文本中解析单个 artifact。
+# 只有文本是合法 JSON，并且 JSON 顶层包含 artifact 字典时才返回结果；
+# 如果不是工具结果或 JSON 格式错误，就返回 None。
 def _extract_artifact_from_text(text: str) -> dict[str, Any] | None:
     try:
         data = json.loads(text)
@@ -191,6 +233,9 @@ def _extract_artifact_from_text(text: str) -> dict[str, Any] | None:
     return None
 
 
+# 兼容不同 LangChain/LangGraph stream 事件格式。
+# 有些事件是 ("messages", payload)，有些是 dict 更新，
+# 这个函数把它们统一成 (mode, payload)，方便主循环判断。
 def _normalize_stream_event(event: Any) -> tuple[str, Any]:
     if isinstance(event, tuple) and len(event) == 2:
         first, second = event
@@ -203,6 +248,9 @@ def _normalize_stream_event(event: Any) -> tuple[str, Any]:
     return "unknown", event
 
 
+# 从 stream 的 payload 中取出真正的 BaseMessage。
+# payload 可能直接就是消息，也可能是一个 tuple，消息在第一个元素里。
+# 如果取不到合法消息，就返回 None，让调用方跳过。
 def _message_from_payload(payload: Any) -> BaseMessage | None:
     if isinstance(payload, tuple) and payload:
         candidate = payload[0]
@@ -210,6 +258,9 @@ def _message_from_payload(payload: Any) -> BaseMessage | None:
     return payload if isinstance(payload, BaseMessage) else None
 
 
+# 从 updates 类型的 payload 中收集消息列表。
+# LangGraph 的更新事件可能按节点名包一层 dict，
+# 这里会遍历每个 value，把里面的 BaseMessage 统一拿出来。
 def _messages_from_update(payload: Any) -> list[BaseMessage]:
     messages: list[BaseMessage] = []
     if not isinstance(payload, dict):

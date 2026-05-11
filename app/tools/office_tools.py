@@ -47,10 +47,17 @@ class GenerateExcelInput(BaseModel):
     content: str = Field(description="表格内容，支持逗号、制表符或竖线分隔")
 
 
+# 构建给办公 Agent 使用的一组工具。
+# 这些工具会被 LangChain 包装成 StructuredTool，模型可以根据任务自主调用。
+# db 用于查上传文件、保存 artifact 和读写记忆；
+# public_base_url 用于把下载路径拼成前端可直接访问的完整地址。
 def build_office_tools(db: Session, public_base_url: str = "") -> list[StructuredTool]:
     memory = MemoryStore(db)
     vectors = VectorStore()
 
+    # 列出最近上传的文件。
+    # 这个工具给 Agent 了解“当前有哪些文件可用”，返回文件 ID、文件名、类型和内容预览。
+    # query 参数暂时没有参与过滤，保留它是为了让工具签名更符合自然语言调用习惯。
     def list_uploaded_files(query: str = "", limit: int = 20) -> str:
         records = db.scalars(select(FileRecord).order_by(FileRecord.created_at.desc()).limit(limit)).all()
         return ok(
@@ -67,6 +74,9 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
             }
         )
 
+    # 按文件 ID 读取上传文件的抽取文本。
+    # max_chars 用来限制返回长度，避免一次把很大的文件全部塞给模型。
+    # 如果文件不存在，会返回统一格式的失败 JSON。
     def read_file(file_id: int, max_chars: int = 12000) -> str:
         record = db.get(FileRecord, file_id)
         if not record:
@@ -82,10 +92,16 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
             }
         )
 
+    # 在已上传文件的向量索引中搜索相关片段。
+    # query 是搜索问题或关键词，limit 控制返回条数；
+    # file_ids 不为空时只搜索指定文件，适合用户明确选择了文件的场景。
     def search_uploaded_files(query: str, limit: int = 5, file_ids: list[int] | None = None) -> str:
         results = vectors.search_documents(query, limit=limit, file_ids=file_ids or None)
         return ok({"matches": results})
 
+    # 分析指定 Excel 文件的结构。
+    # 先检查文件是否存在，再检查后缀是否是支持的 Excel 类型；
+    # 通过后才调用 analyze_excel_file 返回工作表、表头、行列数和样例数据。
     def analyze_excel(file_id: int) -> str:
         record = db.get(FileRecord, file_id)
         if not record:
@@ -95,14 +111,20 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
             return fail("file is not an Excel workbook", file_id=file_id, suffix=suffix)
         return ok({"file_id": file_id, "filename": record.filename, "analysis": analyze_excel_file(record.path)})
 
+    # 搜索长期记忆。
+    # Agent 可以用它查找用户偏好、身份信息、项目背景等之前保存过的内容。
     def search_memory(query: str, limit: int = 5) -> str:
         results = memory.search(query, limit=limit)
         return ok({"memories": [{"id": item.id, "content": item.content, "source": item.source} for item in results]})
 
+    # 保存一条长期记忆。
+    # Agent 只有在用户明确表达长期偏好、身份、项目背景等信息时才应调用它。
     def save_memory(content: str) -> str:
         record = memory.add(content, source="tool")
         return ok({"memory": {"id": record.id, "content": record.content}})
 
+    # 生成 Word 报告并登记为 artifact。
+    # 文件生成后会写入 TaskArtifact 表，这样前端可以通过 artifact ID 下载真实文件。
     def generate_word_report(title: str, content: str) -> str:
         path = generate_word(title, content)
         artifact = TaskArtifact(kind="word", path=str(path))
@@ -111,6 +133,8 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
         db.refresh(artifact)
         return _artifact_result(artifact, public_base_url)
 
+    # 生成 Excel 表格并登记为 artifact。
+    # content 会由 output_tools 解析成行列数据，生成的文件路径会保存到数据库。
     def generate_excel_table(filename: str, content: str) -> str:
         path = generate_excel(filename, content)
         artifact = TaskArtifact(kind="excel", path=str(path))
@@ -170,6 +194,9 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
     ]
 
 
+# 把数据库中的 artifact 记录转换成工具返回给 Agent 的 JSON 字符串。
+# 同时提供相对下载地址和绝对下载地址；
+# 如果 public_base_url 为空，就只返回相对路径。
 def _artifact_result(artifact: TaskArtifact, public_base_url: str) -> str:
     download_url = f"/api/files/artifacts/{artifact.id}/download"
     absolute_url = f"{public_base_url.rstrip('/')}{download_url}" if public_base_url else download_url

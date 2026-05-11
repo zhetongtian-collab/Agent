@@ -4,6 +4,10 @@ from typing import Any
 from openpyxl import load_workbook
 
 
+# 分析 Excel 文件的结构，返回每个工作表的概览信息。
+# max_rows 控制每个工作表最多展示多少行样例数据。
+# 返回结果包括工作表名、非空行数、列数、表头和样例行，
+# 方便 Agent 在不读取完整大表的情况下先了解表格长什么样。
 def analyze_excel_file(path: str | Path, max_rows: int = 5) -> dict[str, Any]:
     workbook = load_workbook(path, data_only=True, read_only=True)
     try:
