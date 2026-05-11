@@ -10,6 +10,10 @@ from app.memory.vector_store import VectorStore
 from app.tools.file_reader import extract_text
 
 
+# 文档业务服务类。
+# 负责处理上传文件相关的核心逻辑：
+# 保存文件到磁盘、抽取文本、写入数据库、建立向量索引，
+# 以及删除文件时同步清理磁盘文件、数据库记录和向量数据。
 class DocumentService:
     # 初始化文档服务。
     # db 是当前请求的数据库会话，后续保存和删除文件记录都通过它完成。

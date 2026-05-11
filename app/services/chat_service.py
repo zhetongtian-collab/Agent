@@ -13,6 +13,10 @@ from app.schemas.chat import ChatRequest, ChatResponse
 from app.tools.office_tools import build_office_tools
 
 
+# 聊天业务服务类。
+# API 层只负责接收请求和返回响应，真正的聊天流程都放在这里：
+# 构建上下文、读取相关文件、检索长期记忆、调用大模型 Agent、
+# 收集生成文件信息，并在合适的时候更新长期记忆。
 class ChatService:
     # 初始化聊天服务。
     # 每个 ChatService 绑定一个数据库会话，并创建记忆管理器和向量检索器，

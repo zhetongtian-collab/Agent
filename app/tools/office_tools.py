@@ -13,35 +13,52 @@ from app.tools.json_utils import fail, ok
 from app.tools.output_tools import generate_excel, generate_word
 
 
+# 通用搜索工具的入参模型。
+# Agent 调用需要“搜索某些内容”的工具时，会按这个结构传入关键词 query 和返回条数 limit。
 class SearchInput(BaseModel):
     query: str = Field(description="用户问题或检索关键词")
     limit: int = Field(default=5, ge=1, le=10)
 
 
+# 文件搜索工具的入参模型。
+# 在通用搜索参数基础上增加 file_ids，
+# 这样 Agent 可以选择只在用户指定的某几个上传文件里检索相关内容。
 class SearchFilesInput(BaseModel):
     query: str = Field(description="用户问题或检索关键词")
     limit: int = Field(default=5, ge=1, le=10)
     file_ids: list[int] = Field(default_factory=list, description="如果只想检索指定文件，传入文件 ID 列表")
 
 
+# 保存长期记忆工具的入参模型。
+# content 表示需要长期保存的事实或偏好，例如用户身份、项目背景、输出格式偏好等。
 class SaveMemoryInput(BaseModel):
     content: str = Field(description="需要长期保存的用户偏好、业务背景或事实")
 
 
+# 读取上传文件工具的入参模型。
+# file_id 指定要读取哪个文件，max_chars 限制最多返回多少字符，
+# 避免一次性把超长文件内容全部塞给大模型。
 class ReadFileInput(BaseModel):
     file_id: int = Field(description="上传文件的 ID")
     max_chars: int = Field(default=12000, ge=500, le=30000, description="最多返回多少字符")
 
 
+# Excel 分析工具的入参模型。
+# 只需要一个 file_id，用来告诉工具要分析哪一个已上传的 Excel 文件。
 class AnalyzeExcelInput(BaseModel):
     file_id: int = Field(description="Excel 文件 ID")
 
 
+# Word 生成工具的入参模型。
+# title 用作报告标题或文件名来源，content 是要写入 Word 文档的正文内容。
 class GenerateWordInput(BaseModel):
     title: str = Field(description="报告标题或文件名")
     content: str = Field(description="Word 正文内容")
 
 
+# Excel 生成工具的入参模型。
+# filename 用来生成导出的 Excel 文件名，content 是表格文本，
+# 后续会按逗号、制表符或竖线拆分成单元格。
 class GenerateExcelInput(BaseModel):
     filename: str = Field(description="Excel 文件名")
     content: str = Field(description="表格内容，支持逗号、制表符或竖线分隔")

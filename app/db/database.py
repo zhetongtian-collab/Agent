@@ -7,6 +7,9 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from app.core.config import settings
 
 
+# 所有数据库模型类的共同基类。
+# SQLAlchemy 会通过这个 Base 收集各个模型类的表结构信息，
+# 后面 init_db 调用 Base.metadata.create_all 时，就是根据这些信息创建数据库表。
 class Base(DeclarativeBase):
     pass
 

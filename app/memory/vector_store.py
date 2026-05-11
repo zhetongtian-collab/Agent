@@ -8,6 +8,9 @@ import chromadb
 from app.core.config import settings
 
 
+# 基于哈希的简易文本向量器。
+# 它不依赖外部 embedding 模型，而是把词语哈希到固定维度的向量里。
+# 优点是本地即可运行、速度快；缺点是语义理解能力比真正的 embedding 模型弱。
 class HashEmbedding:
     # 初始化一个非常轻量的哈希向量器。
     # dimensions 表示向量维度；维度越大，词语哈希碰撞越少，但占用空间也更多。
@@ -30,6 +33,10 @@ class HashEmbedding:
         return [value / norm for value in vector]
 
 
+# 向量数据库封装类。
+# 负责连接本地 ChromaDB，并管理两个集合：
+# memories 用于长期记忆检索，documents 用于上传文档片段检索。
+# 业务层不直接操作 ChromaDB，而是通过这个类完成写入、删除和搜索。
 class VectorStore:
     # 初始化向量数据库。
     # persist_dir 是 ChromaDB 的持久化目录，不传时使用配置里的 vector_dir。

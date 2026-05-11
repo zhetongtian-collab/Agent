@@ -8,6 +8,10 @@ from app.db.models import MemoryRecord
 from app.memory.vector_store import VectorStore
 
 
+# 长期记忆业务类。
+# 它把“数据库记录”和“向量检索”封装到一起：
+# 数据库存真实内容，向量库存可搜索的语义向量。
+# 聊天服务和工具层通过这个类来搜索、添加、删除和自动更新用户记忆。
 class MemoryStore:
     # 初始化长期记忆存储对象。
     # db 是当前请求使用的数据库会话；
