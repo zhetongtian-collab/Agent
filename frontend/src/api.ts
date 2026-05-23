@@ -27,6 +27,7 @@ export type ArtifactInfo = {
   path?: string;
   download_url: string;
   absolute_download_url?: string;
+  metadata?: Record<string, unknown>;
 };
 
 export async function sendChat(message: string, fileIds: number[], sessionId = "default"): Promise<ChatResponse> {

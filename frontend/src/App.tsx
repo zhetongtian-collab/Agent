@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BarChart3,
   FileText,
   Loader2,
   MessageSquare,
@@ -392,16 +393,7 @@ export function App() {
                 {message.artifacts?.length ? (
                   <div className="artifact-list">
                     {message.artifacts.map((artifact) => (
-                      <a
-                        key={`${artifact.kind}-${artifact.id}`}
-                        className="artifact-link"
-                        href={artifact.download_url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <FileText size={16} />
-                        下载{artifact.kind === "word" ? " Word" : " Excel"}文件
-                      </a>
+                      <ArtifactView key={`${artifact.kind}-${artifact.id}`} artifact={artifact} />
                     ))}
                   </div>
                 ) : null}
@@ -434,6 +426,33 @@ export function App() {
       </section>
     </main>
   );
+}
+
+function ArtifactView({ artifact }: { artifact: ArtifactInfo }) {
+  if (artifact.kind === "chart") {
+    const title = getChartTitle(artifact);
+    return (
+      <div className="chart-artifact">
+        <a className="chart-open-link" href={artifact.download_url} target="_blank" rel="noreferrer">
+          <BarChart3 size={16} />
+          打开图表
+        </a>
+        <img src={artifact.download_url} alt={title} />
+      </div>
+    );
+  }
+
+  return (
+    <a className="artifact-link" href={artifact.download_url} target="_blank" rel="noreferrer">
+      <FileText size={16} />
+      下载{artifact.kind === "word" ? " Word" : " Excel"}文件
+    </a>
+  );
+}
+
+function getChartTitle(artifact: ArtifactInfo): string {
+  const title = artifact.metadata?.title;
+  return typeof title === "string" && title.trim() ? title : "Excel 数据图表";
 }
 
 function loadConversationState(): ConversationState {

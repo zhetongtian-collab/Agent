@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.models import FileRecord, PdfTableRecord, TaskArtifact
 from app.memory.store import MemoryStore
 from app.memory.vector_store import VectorStore
-from app.tools.excel_tools import analyze_excel_file
+from app.tools.excel_tools import analyze_excel_file, generate_excel_chart_image
 from app.tools.json_utils import fail, ok
 from app.tools.output_tools import generate_excel, generate_word
 
@@ -50,6 +50,22 @@ class ReadFileInput(BaseModel):
 # 只需要一个 file_id，用来告诉工具要分析哪一个已上传的 Excel 文件。
 class AnalyzeExcelInput(BaseModel):
     file_id: int = Field(description="Excel 文件 ID")
+
+
+class GenerateExcelChartInput(BaseModel):
+    file_id: int = Field(description="已上传 Excel 文件的 ID")
+    chart_type: Literal["line", "bar"] = Field(description="图表类型：line 表示折线图，bar 表示柱状图")
+    sheet_name: str | None = Field(default=None, description="可选。工作表名称；不传时使用当前活动工作表。")
+    x_axis_column: str | None = Field(
+        default=None,
+        description="可选。横轴列名、列字母或从 1 开始的列序号；不传时使用第一列。",
+    )
+    y_columns: list[str] | None = Field(
+        default=None,
+        description="可选。数值系列列，可传列名、列字母或从 1 开始的列序号；不传时自动识别数值列。",
+    )
+    title: str | None = Field(default=None, description="可选。图表标题")
+    max_rows: int = Field(default=50, ge=1, le=200, description="最多纳入多少行数据")
 
 
 # Word 生成工具的入参模型。
@@ -143,6 +159,40 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
         if suffix not in {".xlsx", ".xlsm"}:
             return fail("file is not an Excel workbook", file_id=file_id, suffix=suffix)
         return ok({"file_id": file_id, "filename": record.filename, "analysis": analyze_excel_file(record.path)})
+
+    def generate_excel_chart(
+        file_id: int,
+        chart_type: str,
+        sheet_name: str | None = None,
+        x_axis_column: str | None = None,
+        y_columns: list[str] | None = None,
+        title: str | None = None,
+        max_rows: int = 50,
+    ) -> str:
+        record = db.get(FileRecord, file_id)
+        if not record:
+            return fail("file not found", file_id=file_id)
+        suffix = Path(record.path).suffix.lower()
+        if suffix not in {".xlsx", ".xlsm"}:
+            return fail("file is not an Excel workbook", file_id=file_id, suffix=suffix)
+        try:
+            result = generate_excel_chart_image(
+                record.path,
+                chart_type=chart_type,
+                sheet_name=sheet_name,
+                x_axis_column=x_axis_column,
+                y_columns=y_columns,
+                title=title,
+                max_rows=max_rows,
+            )
+        except Exception as exc:
+            return fail(str(exc), file_id=file_id)
+
+        artifact = TaskArtifact(kind="chart", file_id=record.id, path=str(result["path"]))
+        db.add(artifact)
+        db.commit()
+        db.refresh(artifact)
+        return _artifact_result(artifact, public_base_url, metadata=result.get("chart", {}))
 
     def list_pdf_tables(file_id: int) -> str:
         record = db.get(FileRecord, file_id)
@@ -292,6 +342,12 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
             args_schema=AnalyzeExcelInput,
         ),
         StructuredTool.from_function(
+            name="generate_excel_chart",
+            description="根据已上传的 Excel 工作簿生成可视化图表图片，并返回图表 artifact，前端会把该图片直接展示在对话窗口。用户要求生成折线图、柱状图、趋势图，或要求把选中的 Excel 数据可视化时必须使用。若用户本轮只选择了一个 Excel 文件，直接使用该 file_id。chart_type 只能是 line 或 bar。不要回答不支持生成图表，也不要让用户改为本地绘图。",
+            func=generate_excel_chart,
+            args_schema=GenerateExcelChartInput,
+        ),
+        StructuredTool.from_function(
             name="list_pdf_tables",
             description="列出指定 PDF 中已结构化抽取到的表格编号、标题、页码和置信度。用户询问 PDF 表格数据时应先调用。",
             func=list_pdf_tables,
@@ -333,20 +389,21 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
 # 把数据库中的 artifact 记录转换成工具返回给 Agent 的 JSON 字符串。
 # 同时提供相对下载地址和绝对下载地址；
 # 如果 public_base_url 为空，就只返回相对路径。
-def _artifact_result(artifact: TaskArtifact, public_base_url: str) -> str:
+def _artifact_result(artifact: TaskArtifact, public_base_url: str, metadata: dict | None = None) -> str:
     download_url = f"/api/files/artifacts/{artifact.id}/download"
     absolute_url = f"{public_base_url.rstrip('/')}{download_url}" if public_base_url else download_url
-    return ok(
-        {
-            "artifact": {
-                "id": artifact.id,
-                "kind": artifact.kind,
-                "path": artifact.path,
-                "download_url": download_url,
-                "absolute_download_url": absolute_url,
-            }
+    payload = {
+        "artifact": {
+            "id": artifact.id,
+            "kind": artifact.kind,
+            "path": artifact.path,
+            "download_url": download_url,
+            "absolute_download_url": absolute_url,
         }
-    )
+    }
+    if metadata:
+        payload["artifact"]["metadata"] = metadata
+    return ok(payload)
 
 
 def _match_pdf_table(tables: list[PdfTableRecord], table_label: str) -> PdfTableRecord | None:

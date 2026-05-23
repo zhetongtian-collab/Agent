@@ -90,4 +90,7 @@ def download_artifact(artifact_id: int, db: Session = Depends(get_db)) -> FileRe
     path = Path(artifact.path)
     if not path.exists():
         raise HTTPException(status_code=404, detail="artifact file missing")
+    if artifact.kind == "chart":
+        media_type = "image/svg+xml" if path.suffix.lower() == ".svg" else None
+        return FileResponse(path, media_type=media_type)
     return FileResponse(path, filename=path.name)

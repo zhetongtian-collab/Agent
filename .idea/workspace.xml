@@ -7,11 +7,14 @@
     <list default="true" id="e6be2a64-bc75-48b9-a5bc-e682a11cefb9" name="更改" comment="完善了对于pdf读取表格数据的功能，可以让agent提取论文中的表格数据信息">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/agents/executor.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/agents/executor.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/files.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/files.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/tools/excel_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/tools/excel_tools.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/tools/office_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/tools/office_tools.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/tools/output_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/tools/output_tools.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/api.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/api.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/styles.css" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tests/test_agent_executor.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_agent_executor.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tests/test_office_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_office_tools.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_output_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_output_tools.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -25,10 +28,11 @@
     </option>
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="498" />
+    <option name="cachedIndexableFilesCount" value="493" />
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="RESET_MODE" value="HARD" />
   </component>
   <component name="McpProjectServerCommands">
     <commands />

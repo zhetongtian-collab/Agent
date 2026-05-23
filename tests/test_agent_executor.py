@@ -34,6 +34,12 @@ def test_agent_prompt_explains_excel_highlight_rule() -> None:
     assert "highlight_scope" in AGENT_SYSTEM_PROMPT
 
 
+def test_agent_prompt_requires_excel_chart_tool() -> None:
+    assert "generate_excel_chart" in AGENT_SYSTEM_PROMPT
+    assert "不要回答“不支持生成图表”" in AGENT_SYSTEM_PROMPT
+    assert "对话窗口直接展示" in AGENT_SYSTEM_PROMPT
+
+
 def test_build_runtime_context_includes_memory_and_file_context() -> None:
     context = build_runtime_context(
         memories=["user prefers tables"],

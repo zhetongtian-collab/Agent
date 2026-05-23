@@ -387,6 +387,42 @@ textarea {
   border-color: #28714f;
 }
 
+.chart-artifact {
+  display: grid;
+  gap: 8px;
+  width: min(760px, 100%);
+}
+
+.chart-artifact img {
+  display: block;
+  width: 100%;
+  max-height: 460px;
+  border: 1px solid #d8ded5;
+  border-radius: 8px;
+  background: #fbfcf8;
+  object-fit: contain;
+}
+
+.chart-open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid #bdd7c9;
+  border-radius: 8px;
+  background: #eef7f1;
+  color: #155338;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chart-open-link:hover {
+  border-color: #28714f;
+}
+
 .composer {
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr) 42px;

@@ -63,6 +63,51 @@ def test_analyze_excel_tool(tmp_path: Path) -> None:
     assert result["analysis"]["sheets"][0]["headers"] == ["区域", "销售额"]
 
 
+def test_generate_excel_chart_tool_returns_image_artifact(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(output_tools.settings, "artifact_dir", tmp_path)
+    xlsx = tmp_path / "销售.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "销售"
+    sheet.append(["月份", "收入", "成本"])
+    sheet.append(["一月", 100, 70])
+    sheet.append(["二月", 150, 90])
+    sheet.append(["三月", 130, 80])
+    workbook.save(xlsx)
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as db:
+        record = FileRecord(filename="销售.xlsx", path=str(xlsx), extracted_text="月份 | 收入 | 成本")
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+
+        result = json.loads(
+            _tool_by_name(build_office_tools(db), "generate_excel_chart").invoke(
+                {
+                    "file_id": record.id,
+                    "chart_type": "line",
+                    "x_axis_column": "月份",
+                    "y_columns": ["收入"],
+                    "title": "收入趋势",
+                }
+            )
+        )
+
+    artifact = result["artifact"]
+    image_path = Path(artifact["path"])
+    assert result["ok"] is True
+    assert artifact["kind"] == "chart"
+    assert artifact["download_url"].startswith("/api/files/artifacts/")
+    assert artifact["metadata"]["chart_type"] == "line"
+    assert artifact["metadata"]["x_axis_column"] == "月份"
+    assert image_path.exists()
+    assert image_path.suffix == ".svg"
+    assert "收入趋势" in image_path.read_text(encoding="utf-8")
+
+
 def test_pdf_table_tools_return_structured_table() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
