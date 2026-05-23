@@ -4,19 +4,14 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e6be2a64-bc75-48b9-a5bc-e682a11cefb9" name="更改" comment="添加了新建对话功能，并能够删除新对话">
+    <list default="true" id="e6be2a64-bc75-48b9-a5bc-e682a11cefb9" name="更改" comment="完善了对于pdf读取表格数据的功能，可以让agent提取论文中的表格数据信息">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/agents/executor.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/agents/executor.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/db/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/db/models.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/memory/vector_store.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/memory/vector_store.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/document_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/document_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/tools/file_reader.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/tools/file_reader.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/tools/office_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/tools/office_tools.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/tools/output_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/tools/output_tools.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tests/test_agent_executor.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_agent_executor.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_document_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_document_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_file_reader.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_file_reader.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tests/test_office_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_office_tools.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_output_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_output_tools.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -104,7 +99,7 @@
       <workItem from="1778759582694" duration="762000" />
       <workItem from="1779510170322" duration="154000" />
       <workItem from="1779510421357" duration="3898000" />
-      <workItem from="1779527025982" duration="690000" />
+      <workItem from="1779527025982" duration="2912000" />
     </task>
     <task id="LOCAL-00001" summary="第一次提交">
       <option name="closed" value="true" />
@@ -178,7 +173,15 @@
       <option name="project" value="LOCAL" />
       <updated>1779512265651</updated>
     </task>
-    <option name="localTasksCounter" value="10" />
+    <task id="LOCAL-00010" summary="完善了对于pdf读取表格数据的功能，可以让agent提取论文中的表格数据信息">
+      <option name="closed" value="true" />
+      <created>1779527784255</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1779527784255</updated>
+    </task>
+    <option name="localTasksCounter" value="11" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -205,6 +208,7 @@
     <MESSAGE value="对每个函数都添加了注释信息" />
     <MESSAGE value="对每个类都添加了注释信息" />
     <MESSAGE value="添加了新建对话功能，并能够删除新对话" />
-    <option name="LAST_COMMIT_MESSAGE" value="添加了新建对话功能，并能够删除新对话" />
+    <MESSAGE value="完善了对于pdf读取表格数据的功能，可以让agent提取论文中的表格数据信息" />
+    <option name="LAST_COMMIT_MESSAGE" value="完善了对于pdf读取表格数据的功能，可以让agent提取论文中的表格数据信息" />
   </component>
 </project>

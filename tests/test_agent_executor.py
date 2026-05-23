@@ -27,6 +27,13 @@ def test_agent_prompt_requires_pdf_table_tools() -> None:
     assert "不要猜测" in AGENT_SYSTEM_PROMPT
 
 
+def test_agent_prompt_explains_excel_highlight_rule() -> None:
+    assert "highlight_gt" in AGENT_SYSTEM_PROMPT
+    assert "highlight_lt" in AGENT_SYSTEM_PROMPT
+    assert "highlight_column" in AGENT_SYSTEM_PROMPT
+    assert "highlight_scope" in AGENT_SYSTEM_PROMPT
+
+
 def test_build_runtime_context_includes_memory_and_file_context() -> None:
     context = build_runtime_context(
         memories=["user prefers tables"],

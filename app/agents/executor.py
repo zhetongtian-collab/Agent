@@ -31,6 +31,12 @@ PDF 表格规则：
 1. 用户要求读取 PDF 论文中的 Table 1、表 1、某个具体表格数据时，必须优先调用 list_pdf_tables 和 read_pdf_table。
 2. 只有 read_pdf_table 返回 ok=true 且包含 rows 时，才能复述表格数据；回答必须包含文件名、页码、表格编号或标题。
 3. 如果 read_pdf_table 返回失败、没有 rows，或只检索到零散正文片段，必须明确说明未定位到结构化表格，不要猜测、补全或编造任何数值。
+
+Excel 样式规则：
+1. 用户要求生成 Excel 并把超过、大于、高于某个阈值的数据或行标红时，调用 generate_excel_table，并设置 highlight_gt 为该阈值。
+2. 用户要求生成 Excel 并把小于、低于、少于某个阈值的数据或行标红时，调用 generate_excel_table，并设置 highlight_lt 为该阈值，不要使用 highlight_gt。
+3. 用户明确指定列名时，例如“销售额小于 1000 的行标红”，必须设置 highlight_column 为该列名，例如“销售额”；不要用其他列的数值触发行标红。
+4. 用户说“行标红”或未说明范围时，highlight_scope 使用 row；用户明确只标红单元格时，highlight_scope 使用 cell。
 """
 
 

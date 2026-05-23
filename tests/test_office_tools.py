@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -101,3 +101,90 @@ def test_pdf_table_tools_return_structured_table() -> None:
     assert read_result["table"]["rows"][1] == ["Ours", "0.91"]
     assert missing_result["ok"] is False
     assert "available_tables" in missing_result
+
+
+def test_generate_excel_tool_supports_row_highlight(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(output_tools.settings, "artifact_dir", tmp_path)
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as db:
+        tools = build_office_tools(db)
+        result = json.loads(
+            _tool_by_name(tools, "generate_excel_table").invoke(
+                {
+                    "filename": "sales.xlsx",
+                    "content": "product,amount\nA,100\nB,650",
+                    "highlight_gt": 500,
+                    "highlight_scope": "row",
+                }
+            )
+        )
+
+    workbook = load_workbook(result["artifact"]["path"])
+    sheet = workbook.active
+
+    assert result["ok"] is True
+    assert sheet["A2"].fill.fgColor.rgb != "FFFF9999"
+    assert sheet["A3"].fill.fgColor.rgb == "FFFF9999"
+    assert sheet["B3"].fill.fgColor.rgb == "FFFF9999"
+    workbook.close()
+
+
+def test_generate_excel_tool_supports_less_than_row_highlight(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(output_tools.settings, "artifact_dir", tmp_path)
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as db:
+        tools = build_office_tools(db)
+        result = json.loads(
+            _tool_by_name(tools, "generate_excel_table").invoke(
+                {
+                    "filename": "sales.xlsx",
+                    "content": "product,amount\nA,900\nB,1200",
+                    "highlight_lt": 1000,
+                    "highlight_scope": "row",
+                }
+            )
+        )
+
+    workbook = load_workbook(result["artifact"]["path"])
+    sheet = workbook.active
+
+    assert result["ok"] is True
+    assert sheet["A2"].fill.fgColor.rgb == "FFFF9999"
+    assert sheet["B2"].fill.fgColor.rgb == "FFFF9999"
+    assert sheet["A3"].fill.fgColor.rgb != "FFFF9999"
+    assert sheet["B3"].fill.fgColor.rgb != "FFFF9999"
+    workbook.close()
+
+
+def test_generate_excel_tool_uses_named_highlight_column(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(output_tools.settings, "artifact_dir", tmp_path)
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as db:
+        tools = build_office_tools(db)
+        result = json.loads(
+            _tool_by_name(tools, "generate_excel_table").invoke(
+                {
+                    "filename": "sales.xlsx",
+                    "content": "区域,销售额,增长率\n华东,1000,0.12\n华南,800,-0.05\n中部,1800,0.35\n东北,950,0.07",
+                    "highlight_lt": 1000,
+                    "highlight_column": "销售额",
+                    "highlight_scope": "row",
+                }
+            )
+        )
+
+    workbook = load_workbook(result["artifact"]["path"])
+    sheet = workbook.active
+
+    assert result["ok"] is True
+    assert sheet["A2"].fill.fgColor.rgb != "FFFF9999"
+    assert sheet["A3"].fill.fgColor.rgb == "FFFF9999"
+    assert sheet["A4"].fill.fgColor.rgb != "FFFF9999"
+    assert sheet["A5"].fill.fgColor.rgb == "FFFF9999"
+    workbook.close()

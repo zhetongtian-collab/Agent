@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 import re
+from typing import Literal
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
@@ -73,6 +74,10 @@ class GenerateWordInput(BaseModel):
 class GenerateExcelInput(BaseModel):
     filename: str = Field(description="Excel 文件名")
     content: str = Field(description="表格内容，支持逗号、制表符或竖线分隔")
+    highlight_gt: float | None = Field(default=None, description="可选。数值大于该阈值时标红，例如 500")
+    highlight_lt: float | None = Field(default=None, description="可选。数值小于该阈值时标红，例如 1000")
+    highlight_column: str | None = Field(default=None, description="可选。只按指定列判断，例如 销售额、B、2")
+    highlight_scope: Literal["row", "cell"] = Field(default="row", description="标红范围：row 标红整行，cell 只标红超阈值单元格")
 
 
 # 构建给办公 Agent 使用的一组工具。
@@ -240,8 +245,22 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
 
     # 生成 Excel 表格并登记为 artifact。
     # content 会由 output_tools 解析成行列数据，生成的文件路径会保存到数据库。
-    def generate_excel_table(filename: str, content: str) -> str:
-        path = generate_excel(filename, content)
+    def generate_excel_table(
+        filename: str,
+        content: str,
+        highlight_gt: float | None = None,
+        highlight_lt: float | None = None,
+        highlight_column: str | None = None,
+        highlight_scope: str = "row",
+    ) -> str:
+        path = generate_excel(
+            filename,
+            content,
+            highlight_gt=highlight_gt,
+            highlight_lt=highlight_lt,
+            highlight_column=highlight_column,
+            highlight_scope=highlight_scope,
+        )
         artifact = TaskArtifact(kind="excel", path=str(path))
         db.add(artifact)
         db.commit()
@@ -304,7 +323,7 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
         ),
         StructuredTool.from_function(
             name="generate_excel_table",
-            description="生成 Excel 表格，并返回真实下载链接。需要交付 Excel 文件时必须调用这个工具。",
+            description="生成 Excel 表格，并返回真实下载链接。可用 highlight_gt 标红大于阈值的数据，highlight_lt 标红小于阈值的数据；用户指定列名时必须设置 highlight_column，例如 销售额。",
             func=generate_excel_table,
             args_schema=GenerateExcelInput,
         ),
