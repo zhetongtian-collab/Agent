@@ -93,3 +93,30 @@ def test_chat_service_stream_uses_session_checkpoint_context(monkeypatch) -> Non
     assert captured["message"] == "hi"
     assert captured["session_id"] == "thread-1"
     assert captured["runtime_context"]["extra_context"] == ""
+
+
+def test_chat_service_passes_distinct_session_ids_to_agent(monkeypatch) -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    captured_session_ids = []
+
+    class FakeVectorStore:
+        def search_documents(self, query, limit=5, file_ids=None):
+            return []
+
+    def fake_run_office_agent(model, tools, messages, session_id, runtime_context=None):
+        captured_session_ids.append(session_id)
+        return {"answer": f"answer for {session_id}", "artifacts": []}
+
+    monkeypatch.setattr("app.services.chat_service.get_qwen_chat_model", lambda: SimpleNamespace())
+    monkeypatch.setattr("app.services.chat_service.run_office_agent", fake_run_office_agent)
+    monkeypatch.setattr("app.services.chat_service.VectorStore", FakeVectorStore)
+
+    with Session(engine) as db:
+        service = ChatService(db)
+        first = service.handle_chat(ChatRequest(message="hello", session_id="conversation-a"))
+        second = service.handle_chat(ChatRequest(message="hello", session_id="conversation-b"))
+
+    assert captured_session_ids == ["conversation-a", "conversation-b"]
+    assert first.session_id == "conversation-a"
+    assert second.session_id == "conversation-b"

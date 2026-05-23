@@ -4,15 +4,11 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e6be2a64-bc75-48b9-a5bc-e682a11cefb9" name="更改" comment="对每个函数都添加了注释信息">
+    <list default="true" id="e6be2a64-bc75-48b9-a5bc-e682a11cefb9" name="更改" comment="对每个类都添加了注释信息">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/core/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/core/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/db/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/db/database.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/db/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/db/models.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/memory/store.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/memory/store.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/memory/vector_store.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/memory/vector_store.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/schemas/chat.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/schemas/chat.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/schemas/files.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/schemas/files.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/styles.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_chat_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_chat_service.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -26,7 +22,7 @@
     </option>
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="487" />
+    <option name="cachedIndexableFilesCount" value="488" />
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -94,7 +90,12 @@
       <workItem from="1778384890484" duration="402000" />
       <workItem from="1778385691309" duration="95000" />
       <workItem from="1778465379731" duration="2132000" />
-      <workItem from="1778467572855" duration="2236000" />
+      <workItem from="1778467572855" duration="4432000" />
+      <workItem from="1778549784605" duration="2916000" />
+      <workItem from="1778571699526" duration="2252000" />
+      <workItem from="1778759582694" duration="762000" />
+      <workItem from="1779510170322" duration="154000" />
+      <workItem from="1779510421357" duration="1655000" />
     </task>
     <task id="LOCAL-00001" summary="第一次提交">
       <option name="closed" value="true" />
@@ -152,7 +153,15 @@
       <option name="project" value="LOCAL" />
       <updated>1778469283256</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="对每个类都添加了注释信息">
+      <option name="closed" value="true" />
+      <created>1778470092902</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1778470092902</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -177,6 +186,7 @@
     <MESSAGE value="暂时完美的项目" />
     <MESSAGE value="将短期记忆进行了修改，采用checkpoint，不存进数据库当中，先存储在内存中，会话结束后会忘记。" />
     <MESSAGE value="对每个函数都添加了注释信息" />
-    <option name="LAST_COMMIT_MESSAGE" value="对每个函数都添加了注释信息" />
+    <MESSAGE value="对每个类都添加了注释信息" />
+    <option name="LAST_COMMIT_MESSAGE" value="对每个类都添加了注释信息" />
   </component>
 </project>

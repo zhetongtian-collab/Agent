@@ -1,5 +1,15 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { FileText, Loader2, MessageSquare, Paperclip, RefreshCw, Send, Trash2, Upload } from "lucide-react";
+import {
+  FileText,
+  Loader2,
+  MessageSquare,
+  Paperclip,
+  Plus,
+  RefreshCw,
+  Send,
+  Trash2,
+  Upload
+} from "lucide-react";
 import {
   ArtifactInfo,
   FileInfo,
@@ -19,35 +29,59 @@ type Message = {
   artifacts?: ArtifactInfo[];
 };
 
+type Conversation = {
+  id: string;
+  title: string;
+  messages: Message[];
+  selectedFileIds: number[];
+  draft: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ConversationState = {
+  conversations: Conversation[];
+  activeConversationId: string;
+};
+
+const STORAGE_KEY = "longchain.conversations.v1";
+const ACTIVE_STORAGE_KEY = "longchain.activeConversationId.v1";
+const UNTITLED_TITLE = "新对话";
+const WELCOME_TEXT = "请输入任务，或先上传 Word、Excel、PDF、TXT、CSV 文件。";
+
 export function App() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      content: "请输入任务，或先上传 Word、Excel、PDF、TXT、CSV 文件。"
-    }
-  ]);
-  const [input, setInput] = useState("");
+  const [conversationState, setConversationState] = useState<ConversationState>(() => loadConversationState());
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [memories, setMemories] = useState<MemoryInfo[]>([]);
-  const [selectedFileIds, setSelectedFileIds] = useState<number[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [busyConversationIds, setBusyConversationIds] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
 
+  const { conversations, activeConversationId } = conversationState;
+  const activeConversation = useMemo(
+    () => conversations.find((conversation) => conversation.id === activeConversationId) ?? conversations[0],
+    [activeConversationId, conversations]
+  );
+  const selectedFileIds = activeConversation?.selectedFileIds ?? [];
   const selectedFiles = useMemo(
     () => files.filter((file) => selectedFileIds.includes(file.id)),
     [files, selectedFileIds]
   );
+  const activeBusy = activeConversation ? busyConversationIds.includes(activeConversation.id) : false;
 
   useEffect(() => {
     refreshSidebars();
   }, []);
 
   useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+    window.localStorage.setItem(ACTIVE_STORAGE_KEY, activeConversationId);
+  }, [activeConversationId, conversations]);
+
+  useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [activeConversationId, activeConversation?.messages]);
 
   async function refreshSidebars() {
     const [nextFiles, nextMemories] = await Promise.all([listFiles(), listMemories()]);
@@ -55,62 +89,145 @@ export function App() {
     setMemories(nextMemories);
   }
 
-  async function handleSubmit(event: FormEvent) {
+  function createNewConversation() {
+    const conversation = createConversation();
+    setConversationState((current) => ({
+      conversations: [conversation, ...current.conversations],
+      activeConversationId: conversation.id
+    }));
+  }
+
+  function switchConversation(conversationId: string) {
+    setConversationState((current) => ({ ...current, activeConversationId: conversationId }));
+  }
+
+  function deleteConversation(conversationId: string) {
+    setBusyConversationIds((current) => current.filter((id) => id !== conversationId));
+    setConversationState((current) => {
+      const remaining = current.conversations.filter((conversation) => conversation.id !== conversationId);
+      if (!remaining.length) {
+        const conversation = createConversation();
+        return { conversations: [conversation], activeConversationId: conversation.id };
+      }
+      return {
+        conversations: remaining,
+        activeConversationId:
+          current.activeConversationId === conversationId ? remaining[0].id : current.activeConversationId
+      };
+    });
+  }
+
+  function updateActiveDraft(value: string) {
+    const conversationId = activeConversation?.id;
+    if (!conversationId) return;
+    updateConversation(conversationId, (conversation) => ({ ...conversation, draft: value }));
+  }
+
+  function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    const message = input.trim();
-    if (!message || busy) return;
+    void submitMessage();
+  }
+
+  async function submitMessage() {
+    if (!activeConversation) return;
+
+    const conversationId = activeConversation.id;
+    const message = activeConversation.draft.trim();
+    const fileIds = [...activeConversation.selectedFileIds];
+    if (!message || busyConversationIds.includes(conversationId)) return;
 
     const assistantId = crypto.randomUUID();
-    setInput("");
-    setBusy(true);
-    setMessages((current) => [
-      ...current,
-      { id: crypto.randomUUID(), role: "user", content: message },
-      { id: assistantId, role: "assistant", content: "" }
-    ]);
+    setBusyConversationIds((current) => [...new Set([...current, conversationId])]);
+    updateConversation(conversationId, (conversation) => {
+      const hasUserMessage = conversation.messages.some((item) => item.role === "user");
+      return {
+        ...conversation,
+        title: hasUserMessage ? conversation.title : buildConversationTitle(message),
+        draft: "",
+        updatedAt: new Date().toISOString(),
+        messages: [
+          ...conversation.messages,
+          { id: crypto.randomUUID(), role: "user", content: message },
+          { id: assistantId, role: "assistant", content: "" }
+        ]
+      };
+    });
 
     try {
-      await streamChat(message, selectedFileIds, (event) => {
-        if (event.type === "token") {
-          updateAssistantMessage(assistantId, (item) => ({ ...item, content: item.content + event.content }));
-        } else if (event.type === "artifact") {
-          updateAssistantMessage(assistantId, (item) => ({
-            ...item,
-            artifacts: appendArtifact(item.artifacts, event.artifact)
-          }));
-        } else if (event.type === "done") {
-          updateAssistantMessage(assistantId, (item) => ({
-            ...item,
-            content: event.answer || item.content,
-            artifacts: mergeArtifacts(item.artifacts, event.artifacts)
-          }));
-        } else if (event.type === "error") {
-          updateAssistantMessage(assistantId, (item) => ({
-            ...item,
-            content: item.content || `请求失败：${event.message}`
-          }));
-        }
-      });
+      await streamChat(
+        message,
+        fileIds,
+        (event) => {
+          if (event.type === "token") {
+            updateAssistantMessage(conversationId, assistantId, (item) => ({
+              ...item,
+              content: item.content + event.content
+            }));
+          } else if (event.type === "artifact") {
+            updateAssistantMessage(conversationId, assistantId, (item) => ({
+              ...item,
+              artifacts: appendArtifact(item.artifacts, event.artifact)
+            }));
+          } else if (event.type === "done") {
+            updateAssistantMessage(conversationId, assistantId, (item) => ({
+              ...item,
+              content: event.answer || item.content,
+              artifacts: mergeArtifacts(item.artifacts, event.artifacts)
+            }));
+          } else if (event.type === "error") {
+            updateAssistantMessage(conversationId, assistantId, (item) => ({
+              ...item,
+              content: item.content || `请求失败：${event.message}`
+            }));
+          }
+        },
+        conversationId
+      );
       await refreshSidebars();
     } catch (error) {
-      updateAssistantMessage(assistantId, (item) => ({ ...item, content: `请求失败：${String(error)}` }));
+      updateAssistantMessage(conversationId, assistantId, (item) => ({
+        ...item,
+        content: item.content || `请求失败：${String(error)}`
+      }));
     } finally {
-      setBusy(false);
+      setBusyConversationIds((current) => current.filter((id) => id !== conversationId));
     }
   }
 
-  function updateAssistantMessage(id: string, updater: (message: Message) => Message) {
-    setMessages((current) => current.map((message) => (message.id === id ? updater(message) : message)));
+  function updateConversation(conversationId: string, updater: (conversation: Conversation) => Conversation) {
+    setConversationState((current) => ({
+      ...current,
+      conversations: current.conversations.map((conversation) =>
+        conversation.id === conversationId ? updater(conversation) : conversation
+      )
+    }));
+  }
+
+  function updateAssistantMessage(
+    conversationId: string,
+    messageId: string,
+    updater: (message: Message) => Message
+  ) {
+    updateConversation(conversationId, (conversation) => ({
+      ...conversation,
+      updatedAt: new Date().toISOString(),
+      messages: conversation.messages.map((message) => (message.id === messageId ? updater(message) : message))
+    }));
   }
 
   async function handleUpload(fileList: FileList | null) {
     const file = fileList?.[0];
-    if (!file) return;
+    const conversationId = activeConversation?.id;
+    if (!file || !conversationId) return;
     setUploading(true);
     try {
       const uploaded = await uploadFile(file);
       setFiles((current) => [uploaded, ...current]);
-      setSelectedFileIds((current) => [...new Set([...current, uploaded.id])]);
+      updateConversation(conversationId, (conversation) => ({
+        ...conversation,
+        selectedFileIds: [...new Set([...conversation.selectedFileIds, uploaded.id])],
+        updatedAt: new Date().toISOString()
+      }));
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -120,7 +237,13 @@ export function App() {
   async function handleDeleteFile(fileId: number) {
     await deleteFile(fileId);
     setFiles((current) => current.filter((file) => file.id !== fileId));
-    setSelectedFileIds((current) => current.filter((id) => id !== fileId));
+    setConversationState((current) => ({
+      ...current,
+      conversations: current.conversations.map((conversation) => ({
+        ...conversation,
+        selectedFileIds: conversation.selectedFileIds.filter((id) => id !== fileId)
+      }))
+    }));
   }
 
   async function handleDeleteMemory(memoryId: number) {
@@ -129,9 +252,15 @@ export function App() {
   }
 
   function toggleFile(id: number) {
-    setSelectedFileIds((current) =>
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
-    );
+    const conversationId = activeConversation?.id;
+    if (!conversationId) return;
+    updateConversation(conversationId, (conversation) => ({
+      ...conversation,
+      selectedFileIds: conversation.selectedFileIds.includes(id)
+        ? conversation.selectedFileIds.filter((item) => item !== id)
+        : [...conversation.selectedFileIds, id],
+      updatedAt: new Date().toISOString()
+    }));
   }
 
   return (
@@ -141,6 +270,41 @@ export function App() {
           <MessageSquare size={22} />
           <span>LongChain Office</span>
         </div>
+
+        <section className="panel conversation-panel">
+          <div className="panel-title">
+            <span>对话</span>
+            <button className="icon-button" onClick={createNewConversation} title="新建对话">
+              <Plus size={18} />
+            </button>
+          </div>
+          <div className="conversation-list">
+            {conversations.map((conversation) => (
+              <div
+                key={conversation.id}
+                className={`conversation-row ${conversation.id === activeConversation?.id ? "selected" : ""}`}
+              >
+                <button
+                  className="conversation-select"
+                  onClick={() => switchConversation(conversation.id)}
+                  title={conversation.title}
+                >
+                  <MessageSquare size={16} />
+                  <span>{conversation.title}</span>
+                  {busyConversationIds.includes(conversation.id) ? <Loader2 className="spin" size={15} /> : null}
+                </button>
+                <button
+                  className="conversation-delete"
+                  onClick={() => deleteConversation(conversation.id)}
+                  title="删除对话"
+                  aria-label={`删除 ${conversation.title}`}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
 
         <section className="panel">
           <div className="panel-title">
@@ -178,7 +342,7 @@ export function App() {
 
         <section className="panel memory-panel">
           <div className="panel-title">
-            <span>记忆</span>
+            <span>长期记忆</span>
             <button className="icon-button" onClick={refreshSidebars} title="刷新">
               <RefreshCw size={17} />
             </button>
@@ -204,7 +368,7 @@ export function App() {
       <section className="chat">
         <header className="chat-header">
           <div>
-            <h1>智能办公助手</h1>
+            <h1>{activeConversation?.title ?? UNTITLED_TITLE}</h1>
             <p>{selectedFiles.length ? `已选择 ${selectedFiles.length} 个文件` : "未选择文件"}</p>
           </div>
           <div className="selected-files">
@@ -215,11 +379,11 @@ export function App() {
         </header>
 
         <div className="messages">
-          {messages.map((message) => (
+          {(activeConversation?.messages ?? []).map((message) => (
             <article key={message.id} className={`message ${message.role}`}>
               <div className="bubble">
                 <div>{message.content}</div>
-                {message.role === "assistant" && busy && !message.content ? (
+                {message.role === "assistant" && activeBusy && !message.content ? (
                   <div className="thinking">
                     <Loader2 className="spin" size={18} />
                     正在处理
@@ -252,24 +416,78 @@ export function App() {
             <Paperclip size={20} />
           </button>
           <textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
+            value={activeConversation?.draft ?? ""}
+            onChange={(event) => updateActiveDraft(event.target.value)}
             placeholder="让智能体总结文件、分析表格、生成报告..."
             rows={1}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
-                handleSubmit(event);
+                void submitMessage();
               }
             }}
           />
-          <button className="send-button" disabled={busy || !input.trim()} title="发送">
+          <button className="send-button" disabled={activeBusy || !activeConversation?.draft.trim()} title="发送">
             <Send size={19} />
           </button>
         </form>
       </section>
     </main>
   );
+}
+
+function loadConversationState(): ConversationState {
+  const fallback = createConversation();
+  try {
+    const rawConversations = window.localStorage.getItem(STORAGE_KEY);
+    const parsed = rawConversations ? (JSON.parse(rawConversations) as Conversation[]) : [];
+    const conversations = parsed.length ? parsed.map(normalizeConversation) : [fallback];
+    const storedActiveId = window.localStorage.getItem(ACTIVE_STORAGE_KEY);
+    const activeConversationId = conversations.some((conversation) => conversation.id === storedActiveId)
+      ? storedActiveId!
+      : conversations[0].id;
+    return { conversations, activeConversationId };
+  } catch {
+    return { conversations: [fallback], activeConversationId: fallback.id };
+  }
+}
+
+function normalizeConversation(conversation: Conversation): Conversation {
+  return {
+    ...conversation,
+    title: conversation.title || UNTITLED_TITLE,
+    messages: conversation.messages?.length ? conversation.messages : [createWelcomeMessage()],
+    selectedFileIds: conversation.selectedFileIds ?? [],
+    draft: conversation.draft ?? "",
+    createdAt: conversation.createdAt ?? new Date().toISOString(),
+    updatedAt: conversation.updatedAt ?? new Date().toISOString()
+  };
+}
+
+function createConversation(): Conversation {
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    title: UNTITLED_TITLE,
+    messages: [createWelcomeMessage()],
+    selectedFileIds: [],
+    draft: "",
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+function createWelcomeMessage(): Message {
+  return {
+    id: crypto.randomUUID(),
+    role: "assistant",
+    content: WELCOME_TEXT
+  };
+}
+
+function buildConversationTitle(message: string): string {
+  const title = message.replace(/\s+/g, " ").trim();
+  return title.length > 18 ? `${title.slice(0, 18)}...` : title || UNTITLED_TITLE;
 }
 
 function appendArtifact(current: ArtifactInfo[] | undefined, artifact: ArtifactInfo): ArtifactInfo[] {
