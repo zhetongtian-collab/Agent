@@ -3,7 +3,7 @@ from pathlib import Path
 from docx import Document
 from openpyxl import Workbook
 
-from app.tools.file_reader import extract_text
+from app.tools.file_reader import PdfPage, _extract_tables_from_text_pages, extract_text
 
 
 def test_extract_text_from_txt(tmp_path: Path) -> None:
@@ -30,3 +30,26 @@ def test_extract_text_from_xlsx(tmp_path: Path) -> None:
     workbook.save(path)
     assert "销售" in extract_text(path)
     assert "产品 | 金额" in extract_text(path)
+
+
+def test_extract_pdf_tables_from_text_page_fallback() -> None:
+    tables = _extract_tables_from_text_pages(
+        [
+            PdfPage(
+                page_number=3,
+                text=(
+                    "Table 1: Main results\n"
+                    "Model  Accuracy  F1\n"
+                    "Base   0.82      0.80\n"
+                    "Ours   0.91      0.89\n\n"
+                    "2. Related Work"
+                ),
+            )
+        ]
+    )
+
+    assert len(tables) == 1
+    assert tables[0].label == "Table 1"
+    assert tables[0].page_number == 3
+    assert tables[0].rows[0] == ["Model", "Accuracy", "F1"]
+    assert tables[0].rows[2] == ["Ours", "0.91", "0.89"]

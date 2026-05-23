@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -38,6 +38,23 @@ class MemoryRecord(Base):
 # 任务生成物记录表对应的 ORM 模型。
 # 当系统生成 Word 或 Excel 文件时，会把生成文件的类型和路径记录在这里。
 # 前端下载 artifact 时，会先根据这张表找到真实文件路径，再返回文件内容。
+class PdfTableRecord(Base):
+    __tablename__ = "pdf_tables"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    file_id: Mapped[int] = mapped_column(ForeignKey("files.id"), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(64), nullable=False)
+    caption: Mapped[str] = mapped_column(Text, default="")
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    data_json: Mapped[str] = mapped_column(Text, nullable=False)
+    raw_text: Mapped[str] = mapped_column(Text, default="")
+    extraction_method: Mapped[str] = mapped_column(String(64), default="text")
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    file: Mapped[FileRecord] = relationship()
+
+
 class TaskArtifact(Base):
     __tablename__ = "task_artifacts"
 

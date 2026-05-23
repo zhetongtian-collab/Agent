@@ -25,6 +25,15 @@ AGENT_SYSTEM_PROMPT = """你是一个可以自主调用工具的智能办公 Age
 9. 不要编造文件中不存在的数据。信息不足时说明缺口，并提出下一步。"""
 
 
+AGENT_SYSTEM_PROMPT += """
+
+PDF 表格规则：
+1. 用户要求读取 PDF 论文中的 Table 1、表 1、某个具体表格数据时，必须优先调用 list_pdf_tables 和 read_pdf_table。
+2. 只有 read_pdf_table 返回 ok=true 且包含 rows 时，才能复述表格数据；回答必须包含文件名、页码、表格编号或标题。
+3. 如果 read_pdf_table 返回失败、没有 rows，或只检索到零散正文片段，必须明确说明未定位到结构化表格，不要猜测、补全或编造任何数值。
+"""
+
+
 CHECKPOINTER = InMemorySaver()
 
 

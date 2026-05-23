@@ -88,6 +88,26 @@ class VectorStore:
             metadatas=[{"file_id": file_id, "filename": filename} for _ in chunks],
         )
 
+    def upsert_document_segments(self, file_id: int, filename: str, segments: list[dict]) -> None:
+        if not segments:
+            return
+        ids = [f"file-{file_id}-{index}" for index, _ in enumerate(segments)]
+        documents = [str(segment["content"]) for segment in segments]
+        metadatas = []
+        for segment in segments:
+            metadata = {"file_id": file_id, "filename": filename}
+            if segment.get("page") is not None:
+                metadata["page"] = int(segment["page"])
+            if segment.get("chunk_type"):
+                metadata["chunk_type"] = str(segment["chunk_type"])
+            metadatas.append(metadata)
+        self.documents.upsert(
+            ids=ids,
+            documents=documents,
+            embeddings=[self.embedding.embed(document) for document in documents],
+            metadatas=metadatas,
+        )
+
     # 删除某个文件对应的所有文档向量片段。
     # 当用户删除上传文件时调用，避免向量库还保留旧文件内容。
     def delete_document_chunks(self, file_id: int) -> None:

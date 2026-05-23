@@ -1,9 +1,28 @@
 from pathlib import Path
+from dataclasses import dataclass
+import re
 
 import pandas as pd
 from docx import Document
 from openpyxl import load_workbook
 from pypdf import PdfReader
+
+
+@dataclass(frozen=True)
+class PdfPage:
+    page_number: int
+    text: str
+
+
+@dataclass(frozen=True)
+class PdfTable:
+    label: str
+    caption: str
+    page_number: int
+    rows: list[list[str]]
+    raw_text: str
+    extraction_method: str
+    confidence: float | None = None
 
 
 # 根据文件后缀选择合适的文本抽取方式。
@@ -61,5 +80,158 @@ def _read_excel(path: Path) -> str:
 # 使用 pypdf 逐页抽取文本，并用换行连接；
 # 如果某一页抽不到文字，就用空字符串占位，避免程序报错。
 def _read_pdf(path: Path) -> str:
+    pages = extract_pdf_pages(path)
+    return "\n\n".join(f"[page={page.page_number}]\n{page.text}" for page in pages)
+
+
+def extract_pdf_pages(path: Path) -> list[PdfPage]:
     reader = PdfReader(str(path))
-    return "\n".join(page.extract_text() or "" for page in reader.pages)
+    return [
+        PdfPage(page_number=index + 1, text=page.extract_text() or "")
+        for index, page in enumerate(reader.pages)
+    ]
+
+
+def extract_pdf_tables(path: Path) -> list[PdfTable]:
+    tables = _extract_tables_with_pdfplumber(path)
+    if tables:
+        return tables
+    return _extract_tables_from_text_pages(extract_pdf_pages(path))
+
+
+def _extract_tables_with_pdfplumber(path: Path) -> list[PdfTable]:
+    try:
+        import pdfplumber  # type: ignore[import-not-found]
+    except ImportError:
+        return []
+
+    results: list[PdfTable] = []
+    with pdfplumber.open(path) as pdf:
+        for page_index, page in enumerate(pdf.pages, start=1):
+            page_text = page.extract_text() or ""
+            labels = _caption_candidates(page_text)
+            for table_index, table in enumerate(page.extract_tables() or [], start=1):
+                rows = _clean_table_rows(table)
+                if not rows:
+                    continue
+                label, caption = _label_for_table(labels, table_index)
+                raw_text = "\n".join(" | ".join(row) for row in rows)
+                results.append(
+                    PdfTable(
+                        label=label,
+                        caption=caption,
+                        page_number=page_index,
+                        rows=rows,
+                        raw_text=raw_text,
+                        extraction_method="pdfplumber",
+                        confidence=0.9,
+                    )
+                )
+    return results
+
+
+def _extract_tables_from_text_pages(pages: list[PdfPage]) -> list[PdfTable]:
+    tables: list[PdfTable] = []
+    for page in pages:
+        lines = [line.strip() for line in page.text.splitlines()]
+        for index, line in enumerate(lines):
+            match = _TABLE_CAPTION_RE.match(line)
+            if not match:
+                continue
+            body = _collect_table_like_lines(lines[index + 1 :])
+            if not body:
+                continue
+            label = _normalize_table_label(match.group(1), match.group(2))
+            caption = line
+            rows = [_split_table_line(item) for item in body]
+            tables.append(
+                PdfTable(
+                    label=label,
+                    caption=caption,
+                    page_number=page.page_number,
+                    rows=rows,
+                    raw_text="\n".join(body),
+                    extraction_method="pypdf_text",
+                    confidence=0.45,
+                )
+            )
+    return tables
+
+
+_TABLE_CAPTION_RE = re.compile(
+    r"^\s*((?:table)|(?:表格?)|(?:TABLE))\s*([0-9]+|[ivxlcdmIVXLCDM]+)\s*[:：.\-]?\s*(.*)$",
+    re.IGNORECASE,
+)
+
+
+def _caption_candidates(text: str) -> list[tuple[str, str]]:
+    candidates: list[tuple[str, str]] = []
+    for line in text.splitlines():
+        match = _TABLE_CAPTION_RE.match(line.strip())
+        if match:
+            candidates.append((_normalize_table_label(match.group(1), match.group(2)), line.strip()))
+    return candidates
+
+
+def _label_for_table(captions: list[tuple[str, str]], table_index: int) -> tuple[str, str]:
+    if table_index <= len(captions):
+        return captions[table_index - 1]
+    label = f"Table {table_index}"
+    return label, label
+
+
+def _normalize_table_label(prefix: str, value: str) -> str:
+    normalized_prefix = "Table" if prefix.lower().startswith("table") else "表"
+    return f"{normalized_prefix} {value.upper() if value.isalpha() else value}"
+
+
+def _collect_table_like_lines(lines: list[str], max_lines: int = 80) -> list[str]:
+    collected: list[str] = []
+    blank_count = 0
+    for line in lines[:max_lines]:
+        if not line:
+            blank_count += 1
+            if collected and blank_count >= 2:
+                break
+            continue
+        if _TABLE_CAPTION_RE.match(line) and collected:
+            break
+        if collected and _looks_like_section_heading(line):
+            break
+        if _looks_like_table_line(line):
+            collected.append(line)
+            blank_count = 0
+        elif collected:
+            break
+    return collected
+
+
+def _looks_like_table_line(line: str) -> bool:
+    if "|" in line or "\t" in line:
+        return True
+    parts = re.split(r"\s{2,}", line.strip())
+    has_number = bool(re.search(r"\d", line))
+    return len(parts) >= 2 and has_number
+
+
+def _looks_like_section_heading(line: str) -> bool:
+    if len(line) > 100:
+        return False
+    return bool(re.match(r"^([0-9]+\.|[A-Z][A-Z\s]{4,})", line))
+
+
+def _split_table_line(line: str) -> list[str]:
+    if "|" in line:
+        return [part.strip() for part in line.split("|")]
+    if "\t" in line:
+        return [part.strip() for part in line.split("\t")]
+    return [part.strip() for part in re.split(r"\s{2,}", line.strip()) if part.strip()]
+
+
+def _clean_table_rows(rows: list[list[str | None]]) -> list[list[str]]:
+    cleaned: list[list[str]] = []
+    for row in rows:
+        values = ["" if value is None else str(value).strip() for value in row]
+        if any(values):
+            cleaned.append(values)
+    return cleaned

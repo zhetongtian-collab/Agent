@@ -1,13 +1,16 @@
 from pathlib import Path
+import json
+import re
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.models import FileRecord
+from app.db.models import FileRecord, PdfTableRecord
 from app.memory.vector_store import VectorStore
-from app.tools.file_reader import extract_text
+from app.tools.file_reader import extract_pdf_tables, extract_text
 
 
 # 文档业务服务类。
@@ -44,8 +47,10 @@ class DocumentService:
         self.db.add(record)
         self.db.commit()
         self.db.refresh(record)
-        chunks = _chunk_text(text)
-        VectorStore().upsert_document_chunks(record.id, record.filename, chunks)
+        vector_store = VectorStore()
+        vector_store.upsert_document_segments(record.id, record.filename, _chunk_document_text(text))
+        if suffix.lower() == ".pdf":
+            self._save_pdf_tables(record, target)
         return record
 
     # 删除一个上传文件。
@@ -60,8 +65,26 @@ class DocumentService:
         if path.exists() and path.is_file():
             path.unlink()
 
+        for table in self.db.scalars(select(PdfTableRecord).where(PdfTableRecord.file_id == file_id)).all():
+            self.db.delete(table)
         VectorStore().delete_document_chunks(file_id)
         self.db.delete(record)
+        self.db.commit()
+
+    def _save_pdf_tables(self, record: FileRecord, path: Path) -> None:
+        for table in extract_pdf_tables(path):
+            self.db.add(
+                PdfTableRecord(
+                    file_id=record.id,
+                    label=table.label,
+                    caption=table.caption,
+                    page_number=table.page_number,
+                    data_json=json.dumps(table.rows, ensure_ascii=False),
+                    raw_text=table.raw_text,
+                    extraction_method=table.extraction_method,
+                    confidence=table.confidence,
+                )
+            )
         self.db.commit()
 
 
@@ -81,3 +104,27 @@ def _chunk_text(text: str, size: int = 1200, overlap: int = 150) -> list[str]:
             break
         start = max(0, end - overlap)
     return chunks
+
+
+def _chunk_document_text(text: str, size: int = 1200, overlap: int = 150) -> list[dict]:
+    page_sections = _split_page_sections(text)
+    if not page_sections:
+        return [{"content": chunk, "chunk_type": "text"} for chunk in _chunk_text(text, size=size, overlap=overlap)]
+
+    segments: list[dict] = []
+    for page_number, page_text in page_sections:
+        for chunk in _chunk_text(page_text, size=size, overlap=overlap):
+            segments.append({"content": chunk, "page": page_number, "chunk_type": "page_text"})
+    return segments
+
+
+def _split_page_sections(text: str) -> list[tuple[int, str]]:
+    matches = list(re.finditer(r"^\[page=(\d+)\]\s*$", text, flags=re.MULTILINE))
+    sections: list[tuple[int, str]] = []
+    for index, match in enumerate(matches):
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        content = text[start:end].strip()
+        if content:
+            sections.append((int(match.group(1)), content))
+    return sections

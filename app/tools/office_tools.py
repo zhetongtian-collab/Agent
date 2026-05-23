@@ -1,11 +1,13 @@
 from pathlib import Path
+import json
+import re
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import FileRecord, TaskArtifact
+from app.db.models import FileRecord, PdfTableRecord, TaskArtifact
 from app.memory.store import MemoryStore
 from app.memory.vector_store import VectorStore
 from app.tools.excel_tools import analyze_excel_file
@@ -51,6 +53,15 @@ class AnalyzeExcelInput(BaseModel):
 
 # Word 生成工具的入参模型。
 # title 用作报告标题或文件名来源，content 是要写入 Word 文档的正文内容。
+class ListPdfTablesInput(BaseModel):
+    file_id: int = Field(description="PDF 文件 ID")
+
+
+class ReadPdfTableInput(BaseModel):
+    file_id: int = Field(description="PDF 文件 ID")
+    table_label: str = Field(description="表格编号，例如 Table 1、TABLE I、表 1")
+
+
 class GenerateWordInput(BaseModel):
     title: str = Field(description="报告标题或文件名")
     content: str = Field(description="Word 正文内容")
@@ -128,6 +139,83 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
             return fail("file is not an Excel workbook", file_id=file_id, suffix=suffix)
         return ok({"file_id": file_id, "filename": record.filename, "analysis": analyze_excel_file(record.path)})
 
+    def list_pdf_tables(file_id: int) -> str:
+        record = db.get(FileRecord, file_id)
+        if not record:
+            return fail("file not found", file_id=file_id)
+        suffix = Path(record.path).suffix.lower()
+        if suffix != ".pdf":
+            return fail("file is not a PDF", file_id=file_id, suffix=suffix)
+        tables = db.scalars(
+            select(PdfTableRecord)
+            .where(PdfTableRecord.file_id == file_id)
+            .order_by(PdfTableRecord.page_number, PdfTableRecord.id)
+        ).all()
+        if not tables:
+            return fail(
+                "no structured PDF tables were found; do not invent table data",
+                file_id=file_id,
+                filename=record.filename,
+            )
+        return ok(
+            {
+                "file_id": file_id,
+                "filename": record.filename,
+                "tables": [
+                    {
+                        "id": table.id,
+                        "label": table.label,
+                        "caption": table.caption,
+                        "page": table.page_number,
+                        "extraction_method": table.extraction_method,
+                        "confidence": table.confidence,
+                    }
+                    for table in tables
+                ],
+            }
+        )
+
+    def read_pdf_table(file_id: int, table_label: str) -> str:
+        record = db.get(FileRecord, file_id)
+        if not record:
+            return fail("file not found", file_id=file_id)
+        suffix = Path(record.path).suffix.lower()
+        if suffix != ".pdf":
+            return fail("file is not a PDF", file_id=file_id, suffix=suffix)
+        tables = db.scalars(
+            select(PdfTableRecord)
+            .where(PdfTableRecord.file_id == file_id)
+            .order_by(PdfTableRecord.page_number, PdfTableRecord.id)
+        ).all()
+        table_list = list(tables)
+        target = _match_pdf_table(table_list, table_label)
+        if not target:
+            return fail(
+                "requested PDF table was not found; do not invent table data",
+                file_id=file_id,
+                table_label=table_label,
+                available_tables=[
+                    {"label": table.label, "caption": table.caption, "page": table.page_number}
+                    for table in table_list
+                ],
+            )
+        return ok(
+            {
+                "file_id": file_id,
+                "filename": record.filename,
+                "table": {
+                    "id": target.id,
+                    "label": target.label,
+                    "caption": target.caption,
+                    "page": target.page_number,
+                    "rows": json.loads(target.data_json),
+                    "raw_text": target.raw_text,
+                    "extraction_method": target.extraction_method,
+                    "confidence": target.confidence,
+                },
+            }
+        )
+
     # 搜索长期记忆。
     # Agent 可以用它查找用户偏好、身份信息、项目背景等之前保存过的内容。
     def search_memory(query: str, limit: int = 5) -> str:
@@ -185,6 +273,18 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
             args_schema=AnalyzeExcelInput,
         ),
         StructuredTool.from_function(
+            name="list_pdf_tables",
+            description="列出指定 PDF 中已结构化抽取到的表格编号、标题、页码和置信度。用户询问 PDF 表格数据时应先调用。",
+            func=list_pdf_tables,
+            args_schema=ListPdfTablesInput,
+        ),
+        StructuredTool.from_function(
+            name="read_pdf_table",
+            description="按表格编号精确读取 PDF 表格的结构化行列数据。若找不到表格，必须说明未定位到，不能编造数据。",
+            func=read_pdf_table,
+            args_schema=ReadPdfTableInput,
+        ),
+        StructuredTool.from_function(
             name="search_memory",
             description="检索用户长期记忆，例如用户偏好、项目背景、常用输出格式。",
             func=search_memory,
@@ -228,3 +328,24 @@ def _artifact_result(artifact: TaskArtifact, public_base_url: str) -> str:
             }
         }
     )
+
+
+def _match_pdf_table(tables: list[PdfTableRecord], table_label: str) -> PdfTableRecord | None:
+    wanted = _normalize_pdf_table_label(table_label)
+    for table in tables:
+        if _normalize_pdf_table_label(table.label) == wanted:
+            return table
+    for table in tables:
+        if wanted and wanted in _normalize_pdf_table_label(table.caption):
+            return table
+    return None
+
+
+def _normalize_pdf_table_label(value: str) -> str:
+    normalized = re.sub(r"\s+", " ", value.strip().lower())
+    normalized = normalized.replace("table", "table ").replace("表格", "表 ").replace("表", "表 ")
+    normalized = re.sub(r"\s+", " ", normalized)
+    match = re.search(r"(table|表)\s*([0-9]+|[ivxlcdm]+)", normalized)
+    if not match:
+        return normalized
+    return f"{match.group(1)} {match.group(2).upper()}"

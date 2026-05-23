@@ -3,6 +3,7 @@ import json
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 
 from app.agents.executor import (
+    AGENT_SYSTEM_PROMPT,
     _extract_artifacts,
     _inject_context_message,
     _message_from_payload,
@@ -19,6 +20,11 @@ def test_build_agent_messages_only_includes_current_user_message() -> None:
     assert len(messages) == 1
     assert isinstance(messages[0], HumanMessage)
     assert messages[0].content == "generate report"
+
+
+def test_agent_prompt_requires_pdf_table_tools() -> None:
+    assert "read_pdf_table" in AGENT_SYSTEM_PROMPT
+    assert "不要猜测" in AGENT_SYSTEM_PROMPT
 
 
 def test_build_runtime_context_includes_memory_and_file_context() -> None:
