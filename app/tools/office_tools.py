@@ -11,7 +11,14 @@ from sqlalchemy.orm import Session
 from app.db.models import FileRecord, PdfTableRecord, TaskArtifact
 from app.memory.store import MemoryStore
 from app.memory.vector_store import VectorStore
-from app.tools.email_tools import EmailAttachment, EmailConfigurationError, EmailSendError, send_email_message
+from app.tools.email_tools import (
+    EmailAttachment,
+    EmailConfigurationError,
+    EmailReceiveError,
+    EmailSendError,
+    fetch_unread_email_messages,
+    send_email_message,
+)
 from app.tools.excel_tools import analyze_excel_file, generate_excel_chart_image
 from app.tools.json_utils import fail, ok
 from app.tools.output_tools import generate_excel, generate_word
@@ -102,6 +109,11 @@ class SendEmailInput(BaseModel):
     subject: str = Field(default="LongChain Office Agent", description="邮件主题")
     content: str = Field(description="邮件正文内容")
     file_ids: list[int] = Field(default_factory=list, description="需要作为附件发送的已上传文件 ID 列表")
+
+
+class FetchUnreadEmailsInput(BaseModel):
+    limit: int = Field(default=5, ge=1, le=20, description="最多拉取多少封未读邮件")
+    body_max_chars: int = Field(default=4000, ge=500, le=20000, description="每封邮件正文或文本附件最多返回多少字符")
 
 
 # 构建给办公 Agent 使用的一组工具。
@@ -362,6 +374,15 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
             }
         )
 
+    def fetch_unread_emails(limit: int = 5, body_max_chars: int = 4000) -> str:
+        try:
+            result = fetch_unread_email_messages(limit=limit, body_max_chars=body_max_chars)
+        except EmailConfigurationError as exc:
+            return fail(str(exc))
+        except EmailReceiveError as exc:
+            return fail(str(exc))
+        return ok({"unread_emails": result})
+
     return [
         StructuredTool.from_function(
             name="list_uploaded_files",
@@ -438,6 +459,16 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
             ),
             func=send_email,
             args_schema=SendEmailInput,
+        ),
+        StructuredTool.from_function(
+            name="fetch_unread_emails",
+            description=(
+                "拉取邮箱收件箱中的未读邮件。用户说收邮件、查看未读邮件、帮我读一下邮件时必须调用。"
+                "返回发件人、收件人、主题、日期、正文内容，以及文本附件的内容预览。"
+                "只有工具返回 ok=true 后，才能把邮件内容总结或展示给用户。"
+            ),
+            func=fetch_unread_emails,
+            args_schema=FetchUnreadEmailsInput,
         ),
     ]
 

@@ -46,6 +46,11 @@ def test_agent_prompt_requires_send_email_tool() -> None:
     assert "邮件已发送" in AGENT_SYSTEM_PROMPT
 
 
+def test_agent_prompt_requires_fetch_unread_emails_tool() -> None:
+    assert "fetch_unread_emails" in AGENT_SYSTEM_PROMPT
+    assert "未读邮件" in AGENT_SYSTEM_PROMPT
+
+
 def test_build_runtime_context_includes_memory_and_file_context() -> None:
     context = build_runtime_context(
         memories=["user prefers tables"],

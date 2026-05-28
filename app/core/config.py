@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     email_smtp_password: str = ""
     email_from: str = ""
     email_use_ssl: bool = True
+    email_imap_host: str = "imap.qq.com"
+    email_imap_port: int = 993
+    email_imap_username: str = ""
+    email_imap_password: str = ""
+    email_mark_read_on_fetch: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

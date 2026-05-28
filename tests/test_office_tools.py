@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from email.message import EmailMessage
 
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import create_engine
@@ -305,3 +306,67 @@ def test_send_email_tool_uses_configured_smtp_with_attachments(tmp_path: Path, m
     attachments = list(sent_messages[0].iter_attachments())
     assert attachments[0].get_filename() == "note.txt"
     assert attachments[0].get_content() == "attached content"
+
+
+def test_fetch_unread_emails_tool_returns_body_and_text_attachments(monkeypatch) -> None:
+    message = EmailMessage()
+    message["From"] = "sender@example.com"
+    message["To"] = "receiver@qq.com"
+    message["Subject"] = "Project update"
+    message["Date"] = "Thu, 28 May 2026 10:00:00 +0800"
+    message.set_content("Please review the attached plan.")
+    message.add_attachment("Plan line 1\nPlan line 2", subtype="plain", filename="plan.txt")
+    raw_message = message.as_bytes()
+    fetch_modes = []
+
+    class FakeIMAP:
+        def __init__(self, host, port):
+            self.host = host
+            self.port = port
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def login(self, username, password):
+            self.username = username
+            self.password = password
+            return "OK", [b"logged in"]
+
+        def select(self, mailbox):
+            return "OK", [b"1"]
+
+        def search(self, charset, criteria):
+            return "OK", [b"42"]
+
+        def fetch(self, email_id, mode):
+            fetch_modes.append(mode)
+            return "OK", [(b"42 (BODY[])", raw_message)]
+
+        def logout(self):
+            return "OK", [b"logged out"]
+
+    monkeypatch.setattr(email_tools.settings, "email_imap_host", "imap.qq.com")
+    monkeypatch.setattr(email_tools.settings, "email_imap_port", 993)
+    monkeypatch.setattr(email_tools.settings, "email_imap_username", "receiver@qq.com")
+    monkeypatch.setattr(email_tools.settings, "email_imap_password", "authorization-code")
+    monkeypatch.setattr(email_tools.settings, "email_mark_read_on_fetch", False)
+    monkeypatch.setattr(email_tools.imaplib, "IMAP4_SSL", FakeIMAP)
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as db:
+        result = json.loads(_tool_by_name(build_office_tools(db), "fetch_unread_emails").invoke({}))
+
+    email = result["unread_emails"]["emails"][0]
+    assert result["ok"] is True
+    assert result["unread_emails"]["count"] == 1
+    assert email["from"] == "sender@example.com"
+    assert email["subject"] == "Project update"
+    assert "Please review the attached plan." in email["body"]
+    assert email["attachments"][0]["filename"] == "plan.txt"
+    assert "Plan line 1" in email["attachments"][0]["content_preview"]
+    assert fetch_modes == ["(BODY.PEEK[])"]
