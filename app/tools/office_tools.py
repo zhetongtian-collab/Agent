@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.models import FileRecord, PdfTableRecord, TaskArtifact
 from app.memory.store import MemoryStore
 from app.memory.vector_store import VectorStore
-from app.tools.email_tools import EmailConfigurationError, EmailSendError, send_email_message
+from app.tools.email_tools import EmailAttachment, EmailConfigurationError, EmailSendError, send_email_message
 from app.tools.excel_tools import analyze_excel_file, generate_excel_chart_image
 from app.tools.json_utils import fail, ok
 from app.tools.output_tools import generate_excel, generate_word
@@ -101,6 +101,7 @@ class SendEmailInput(BaseModel):
     to: str = Field(description="收件人邮箱地址，例如 1254543711@qq.com")
     subject: str = Field(default="LongChain Office Agent", description="邮件主题")
     content: str = Field(description="邮件正文内容")
+    file_ids: list[int] = Field(default_factory=list, description="需要作为附件发送的已上传文件 ID 列表")
 
 
 # 构建给办公 Agent 使用的一组工具。
@@ -324,16 +325,42 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
         db.refresh(artifact)
         return _artifact_result(artifact, public_base_url)
 
-    def send_email(to: str, subject: str = "LongChain Office Agent", content: str = "") -> str:
+    def send_email(
+        to: str,
+        subject: str = "LongChain Office Agent",
+        content: str = "",
+        file_ids: list[int] | None = None,
+    ) -> str:
         if not content.strip():
             return fail("email content is required")
+        attachments = []
+        for file_id in file_ids or []:
+            record = db.get(FileRecord, file_id)
+            if not record:
+                return fail("attachment file not found", file_id=file_id)
+            attachments.append(
+                EmailAttachment(
+                    path=Path(record.path),
+                    filename=record.filename,
+                    content_type=record.content_type,
+                )
+            )
         try:
-            result = send_email_message(to=to, subject=subject, content=content)
+            result = send_email_message(to=to, subject=subject, content=content, attachments=attachments)
         except EmailConfigurationError as exc:
             return fail(str(exc), to=to)
         except EmailSendError as exc:
             return fail(str(exc), to=to)
-        return ok({"email": {"to": result["to"], "subject": result["subject"], "status": "sent"}})
+        return ok(
+            {
+                "email": {
+                    "to": result["to"],
+                    "subject": result["subject"],
+                    "status": "sent",
+                    "attachments": result["attachments"],
+                }
+            }
+        )
 
     return [
         StructuredTool.from_function(
@@ -406,6 +433,7 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
             description=(
                 "发送电子邮件。用户明确要求给某个邮箱发送邮件时必须调用此工具。"
                 "to 是收件人邮箱，subject 是主题，content 是正文。"
+                "如果用户本轮选中了文件，并要求发送邮件，把这些文件 ID 放入 file_ids 作为附件发送。"
                 "只有工具返回 ok=true 后，才能告诉用户邮件已发送。"
             ),
             func=send_email,

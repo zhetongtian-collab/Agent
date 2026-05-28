@@ -236,7 +236,7 @@ def test_generate_excel_tool_uses_named_highlight_column(tmp_path: Path, monkeyp
     workbook.close()
 
 
-def test_send_email_tool_uses_configured_smtp(monkeypatch) -> None:
+def test_send_email_tool_uses_configured_smtp_with_attachments(tmp_path: Path, monkeypatch) -> None:
     sent_messages = []
     smtp_logins = []
 
@@ -268,14 +268,27 @@ def test_send_email_tool_uses_configured_smtp(monkeypatch) -> None:
 
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
+    attachment_path = tmp_path / "note.txt"
+    attachment_path.write_text("attached content", encoding="utf-8")
 
     with Session(engine) as db:
+        record = FileRecord(
+            filename="note.txt",
+            path=str(attachment_path),
+            content_type="text/plain",
+            extracted_text="attached content",
+        )
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+
         result = json.loads(
             _tool_by_name(build_office_tools(db), "send_email").invoke(
                 {
                     "to": "1254543711@qq.com",
                     "subject": "提醒",
                     "content": "明天来找我。",
+                    "file_ids": [record.id],
                 }
             )
         )
@@ -283,8 +296,12 @@ def test_send_email_tool_uses_configured_smtp(monkeypatch) -> None:
     assert result["ok"] is True
     assert result["email"]["status"] == "sent"
     assert result["email"]["to"] == "1254543711@qq.com"
+    assert result["email"]["attachments"] == [{"filename": "note.txt", "content_type": "text/plain"}]
     assert smtp_logins == [("sender@qq.com", "authorization-code")]
     assert sent_messages[0]["From"] == "sender@qq.com"
     assert sent_messages[0]["To"] == "1254543711@qq.com"
     assert sent_messages[0]["Subject"] == "提醒"
-    assert "明天来找我。" in sent_messages[0].get_content()
+    assert "明天来找我。" in sent_messages[0].get_body(preferencelist=("plain",)).get_content()
+    attachments = list(sent_messages[0].iter_attachments())
+    assert attachments[0].get_filename() == "note.txt"
+    assert attachments[0].get_content() == "attached content"

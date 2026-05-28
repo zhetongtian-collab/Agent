@@ -42,6 +42,7 @@ def test_agent_prompt_requires_excel_chart_tool() -> None:
 
 def test_agent_prompt_requires_send_email_tool() -> None:
     assert "send_email" in AGENT_SYSTEM_PROMPT
+    assert "file_ids" in AGENT_SYSTEM_PROMPT
     assert "邮件已发送" in AGENT_SYSTEM_PROMPT
 
 
