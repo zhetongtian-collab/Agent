@@ -4,15 +4,12 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e6be2a64-bc75-48b9-a5bc-e682a11cefb9" name="更改" comment="完善了对于pdf读取表格数据的功能，可以让agent提取论文中的表格数据信息">
+    <list default="true" id="e6be2a64-bc75-48b9-a5bc-e682a11cefb9" name="更改" comment="新增了对excel表格生成柱状图和折线图的功能">
+      <change beforePath="$PROJECT_DIR$/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/.env.example" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/agents/executor.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/agents/executor.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/files.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/files.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/tools/excel_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/tools/excel_tools.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/core/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/core/config.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/tools/office_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/tools/office_tools.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/api.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/api.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/styles.css" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tests/test_agent_executor.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_agent_executor.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tests/test_office_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_office_tools.py" afterDir="false" />
     </list>
@@ -104,6 +101,8 @@
       <workItem from="1779510170322" duration="154000" />
       <workItem from="1779510421357" duration="3898000" />
       <workItem from="1779527025982" duration="2912000" />
+      <workItem from="1779961739666" duration="659000" />
+      <workItem from="1779962968479" duration="1527000" />
     </task>
     <task id="LOCAL-00001" summary="第一次提交">
       <option name="closed" value="true" />

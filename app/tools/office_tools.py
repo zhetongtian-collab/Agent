@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.models import FileRecord, PdfTableRecord, TaskArtifact
 from app.memory.store import MemoryStore
 from app.memory.vector_store import VectorStore
+from app.tools.email_tools import EmailConfigurationError, EmailSendError, send_email_message
 from app.tools.excel_tools import analyze_excel_file, generate_excel_chart_image
 from app.tools.json_utils import fail, ok
 from app.tools.output_tools import generate_excel, generate_word
@@ -94,6 +95,12 @@ class GenerateExcelInput(BaseModel):
     highlight_lt: float | None = Field(default=None, description="可选。数值小于该阈值时标红，例如 1000")
     highlight_column: str | None = Field(default=None, description="可选。只按指定列判断，例如 销售额、B、2")
     highlight_scope: Literal["row", "cell"] = Field(default="row", description="标红范围：row 标红整行，cell 只标红超阈值单元格")
+
+
+class SendEmailInput(BaseModel):
+    to: str = Field(description="收件人邮箱地址，例如 1254543711@qq.com")
+    subject: str = Field(default="LongChain Office Agent", description="邮件主题")
+    content: str = Field(description="邮件正文内容")
 
 
 # 构建给办公 Agent 使用的一组工具。
@@ -317,6 +324,17 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
         db.refresh(artifact)
         return _artifact_result(artifact, public_base_url)
 
+    def send_email(to: str, subject: str = "LongChain Office Agent", content: str = "") -> str:
+        if not content.strip():
+            return fail("email content is required")
+        try:
+            result = send_email_message(to=to, subject=subject, content=content)
+        except EmailConfigurationError as exc:
+            return fail(str(exc), to=to)
+        except EmailSendError as exc:
+            return fail(str(exc), to=to)
+        return ok({"email": {"to": result["to"], "subject": result["subject"], "status": "sent"}})
+
     return [
         StructuredTool.from_function(
             name="list_uploaded_files",
@@ -382,6 +400,16 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
             description="生成 Excel 表格，并返回真实下载链接。可用 highlight_gt 标红大于阈值的数据，highlight_lt 标红小于阈值的数据；用户指定列名时必须设置 highlight_column，例如 销售额。",
             func=generate_excel_table,
             args_schema=GenerateExcelInput,
+        ),
+        StructuredTool.from_function(
+            name="send_email",
+            description=(
+                "发送电子邮件。用户明确要求给某个邮箱发送邮件时必须调用此工具。"
+                "to 是收件人邮箱，subject 是主题，content 是正文。"
+                "只有工具返回 ok=true 后，才能告诉用户邮件已发送。"
+            ),
+            func=send_email,
+            args_schema=SendEmailInput,
         ),
     ]
 

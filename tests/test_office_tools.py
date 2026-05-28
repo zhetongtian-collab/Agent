@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import Base
 from app.db.models import FileRecord, PdfTableRecord
+from app.tools import email_tools
 from app.tools import output_tools
 from app.tools.office_tools import build_office_tools
 
@@ -233,3 +234,57 @@ def test_generate_excel_tool_uses_named_highlight_column(tmp_path: Path, monkeyp
     assert sheet["A4"].fill.fgColor.rgb != "FFFF9999"
     assert sheet["A5"].fill.fgColor.rgb == "FFFF9999"
     workbook.close()
+
+
+def test_send_email_tool_uses_configured_smtp(monkeypatch) -> None:
+    sent_messages = []
+    smtp_logins = []
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout=None):
+            self.host = host
+            self.port = port
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def login(self, username, password):
+            smtp_logins.append((username, password))
+
+        def send_message(self, message):
+            sent_messages.append(message)
+
+    monkeypatch.setattr(email_tools.settings, "email_smtp_host", "smtp.qq.com")
+    monkeypatch.setattr(email_tools.settings, "email_smtp_port", 465)
+    monkeypatch.setattr(email_tools.settings, "email_smtp_username", "sender@qq.com")
+    monkeypatch.setattr(email_tools.settings, "email_smtp_password", "authorization-code")
+    monkeypatch.setattr(email_tools.settings, "email_from", "sender@qq.com")
+    monkeypatch.setattr(email_tools.settings, "email_use_ssl", True)
+    monkeypatch.setattr(email_tools.smtplib, "SMTP_SSL", FakeSMTP)
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as db:
+        result = json.loads(
+            _tool_by_name(build_office_tools(db), "send_email").invoke(
+                {
+                    "to": "1254543711@qq.com",
+                    "subject": "提醒",
+                    "content": "明天来找我。",
+                }
+            )
+        )
+
+    assert result["ok"] is True
+    assert result["email"]["status"] == "sent"
+    assert result["email"]["to"] == "1254543711@qq.com"
+    assert smtp_logins == [("sender@qq.com", "authorization-code")]
+    assert sent_messages[0]["From"] == "sender@qq.com"
+    assert sent_messages[0]["To"] == "1254543711@qq.com"
+    assert sent_messages[0]["Subject"] == "提醒"
+    assert "明天来找我。" in sent_messages[0].get_content()

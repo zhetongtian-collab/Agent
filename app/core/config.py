@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     vector_dir: Path = Path("./storage/chroma")
     artifact_dir: Path = Path("./storage/artifacts")
     frontend_origin: str = "http://localhost:5173"
+    email_smtp_host: str = "smtp.qq.com"
+    email_smtp_port: int = 465
+    email_smtp_username: str = ""
+    email_smtp_password: str = ""
+    email_from: str = ""
+    email_use_ssl: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
