@@ -114,6 +114,7 @@ class SendEmailInput(BaseModel):
 class FetchUnreadEmailsInput(BaseModel):
     limit: int = Field(default=5, ge=1, le=20, description="最多拉取多少封未读邮件")
     body_max_chars: int = Field(default=4000, ge=500, le=20000, description="每封邮件正文或文本附件最多返回多少字符")
+    mark_read: bool = Field(default=True, description="拉取成功后是否把这些未读邮件标记为已读，默认标记为已读")
 
 
 # 构建给办公 Agent 使用的一组工具。
@@ -374,9 +375,9 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
             }
         )
 
-    def fetch_unread_emails(limit: int = 5, body_max_chars: int = 4000) -> str:
+    def fetch_unread_emails(limit: int = 5, body_max_chars: int = 4000, mark_read: bool = True) -> str:
         try:
-            result = fetch_unread_email_messages(limit=limit, body_max_chars=body_max_chars)
+            result = fetch_unread_email_messages(limit=limit, body_max_chars=body_max_chars, mark_read=mark_read)
         except EmailConfigurationError as exc:
             return fail(str(exc))
         except EmailReceiveError as exc:
@@ -465,6 +466,7 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
             description=(
                 "拉取邮箱收件箱中的未读邮件。用户说收邮件、查看未读邮件、帮我读一下邮件时必须调用。"
                 "返回发件人、收件人、主题、日期、正文内容，以及文本附件的内容预览。"
+                "默认会在成功拉取后把这些邮件标记为已读，避免下次重复拉取。"
                 "只有工具返回 ok=true 后，才能把邮件内容总结或展示给用户。"
             ),
             func=fetch_unread_emails,

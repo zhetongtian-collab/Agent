@@ -48,6 +48,7 @@ def test_agent_prompt_requires_send_email_tool() -> None:
 
 def test_agent_prompt_requires_fetch_unread_emails_tool() -> None:
     assert "fetch_unread_emails" in AGENT_SYSTEM_PROMPT
+    assert "mark_read=true" in AGENT_SYSTEM_PROMPT
     assert "未读邮件" in AGENT_SYSTEM_PROMPT
 
 

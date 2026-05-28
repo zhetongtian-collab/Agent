@@ -318,6 +318,7 @@ def test_fetch_unread_emails_tool_returns_body_and_text_attachments(monkeypatch)
     message.add_attachment("Plan line 1\nPlan line 2", subtype="plain", filename="plan.txt")
     raw_message = message.as_bytes()
     fetch_modes = []
+    store_calls = []
 
     class FakeIMAP:
         def __init__(self, host, port):
@@ -345,6 +346,10 @@ def test_fetch_unread_emails_tool_returns_body_and_text_attachments(monkeypatch)
             fetch_modes.append(mode)
             return "OK", [(b"42 (BODY[])", raw_message)]
 
+        def store(self, email_id, command, flags):
+            store_calls.append((email_id, command, flags))
+            return "OK", [b"marked seen"]
+
         def logout(self):
             return "OK", [b"logged out"]
 
@@ -352,7 +357,7 @@ def test_fetch_unread_emails_tool_returns_body_and_text_attachments(monkeypatch)
     monkeypatch.setattr(email_tools.settings, "email_imap_port", 993)
     monkeypatch.setattr(email_tools.settings, "email_imap_username", "receiver@qq.com")
     monkeypatch.setattr(email_tools.settings, "email_imap_password", "authorization-code")
-    monkeypatch.setattr(email_tools.settings, "email_mark_read_on_fetch", False)
+    monkeypatch.setattr(email_tools.settings, "email_mark_read_on_fetch", True)
     monkeypatch.setattr(email_tools.imaplib, "IMAP4_SSL", FakeIMAP)
 
     engine = create_engine("sqlite:///:memory:")
@@ -364,9 +369,11 @@ def test_fetch_unread_emails_tool_returns_body_and_text_attachments(monkeypatch)
     email = result["unread_emails"]["emails"][0]
     assert result["ok"] is True
     assert result["unread_emails"]["count"] == 1
+    assert result["unread_emails"]["marked_read"] is True
     assert email["from"] == "sender@example.com"
     assert email["subject"] == "Project update"
     assert "Please review the attached plan." in email["body"]
     assert email["attachments"][0]["filename"] == "plan.txt"
     assert "Plan line 1" in email["attachments"][0]["content_preview"]
     assert fetch_modes == ["(BODY.PEEK[])"]
+    assert store_calls == [(b"42", "+FLAGS", "\\Seen")]

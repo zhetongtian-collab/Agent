@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     email_imap_port: int = 993
     email_imap_username: str = ""
     email_imap_password: str = ""
-    email_mark_read_on_fetch: bool = False
+    email_mark_read_on_fetch: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

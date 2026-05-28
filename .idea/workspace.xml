@@ -4,8 +4,9 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e6be2a64-bc75-48b9-a5bc-e682a11cefb9" name="更改" comment="新增了qq邮件发送功能，可以发送附件了">
+    <list default="true" id="e6be2a64-bc75-48b9-a5bc-e682a11cefb9" name="更改" comment="新增了qq邮件收邮件功能">
       <change beforePath="$PROJECT_DIR$/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/.env.example" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/agents/executor.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/agents/executor.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/core/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/core/config.py" afterDir="false" />
@@ -104,7 +105,7 @@
       <workItem from="1779527025982" duration="2912000" />
       <workItem from="1779961739666" duration="659000" />
       <workItem from="1779962968479" duration="1655000" />
-      <workItem from="1779977438954" duration="1221000" />
+      <workItem from="1779977438954" duration="1846000" />
     </task>
     <task id="LOCAL-00001" summary="第一次提交">
       <option name="closed" value="true" />
@@ -210,7 +211,15 @@
       <option name="project" value="LOCAL" />
       <updated>1779978099313</updated>
     </task>
-    <option name="localTasksCounter" value="14" />
+    <task id="LOCAL-00014" summary="新增了qq邮件收邮件功能">
+      <option name="closed" value="true" />
+      <created>1779978697105</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1779978697105</updated>
+    </task>
+    <option name="localTasksCounter" value="15" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -240,6 +249,7 @@
     <MESSAGE value="完善了对于pdf读取表格数据的功能，可以让agent提取论文中的表格数据信息" />
     <MESSAGE value="新增了qq邮件发送功能" />
     <MESSAGE value="新增了qq邮件发送功能，可以发送附件了" />
-    <option name="LAST_COMMIT_MESSAGE" value="新增了qq邮件发送功能，可以发送附件了" />
+    <MESSAGE value="新增了qq邮件收邮件功能" />
+    <option name="LAST_COMMIT_MESSAGE" value="新增了qq邮件收邮件功能" />
   </component>
 </project>

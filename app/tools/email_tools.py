@@ -77,9 +77,14 @@ def send_email_message(
     return {"to": recipient, "subject": message["Subject"], "attachments": attached_files}
 
 
-def fetch_unread_email_messages(limit: int = 5, body_max_chars: int = 4000) -> dict[str, object]:
+def fetch_unread_email_messages(
+    limit: int = 5,
+    body_max_chars: int = 4000,
+    mark_read: bool | None = None,
+) -> dict[str, object]:
     username = (settings.email_imap_username or settings.email_smtp_username).strip()
     password = (settings.email_imap_password or settings.email_smtp_password).strip()
+    should_mark_read = settings.email_mark_read_on_fetch if mark_read is None else mark_read
 
     if not username or not password:
         raise EmailConfigurationError(
@@ -93,19 +98,20 @@ def fetch_unread_email_messages(limit: int = 5, body_max_chars: int = 4000) -> d
             _, email_ids = _check_imap_status(imap.search(None, "UNSEEN"), "search unread emails")
             selected_ids = email_ids[0].split()[-limit:] if email_ids and email_ids[0] else []
             emails = []
-            fetch_mode = "(RFC822)" if settings.email_mark_read_on_fetch else "(BODY.PEEK[])"
             for email_id in selected_ids:
-                _, fetch_data = _check_imap_status(imap.fetch(email_id, fetch_mode), "fetch unread email")
+                _, fetch_data = _check_imap_status(imap.fetch(email_id, "(BODY.PEEK[])"), "fetch unread email")
                 raw_message = _raw_message_from_fetch(fetch_data)
                 if raw_message:
                     emails.append(_parse_email(raw_message, body_max_chars=body_max_chars))
+                    if should_mark_read:
+                        _check_imap_status(imap.store(email_id, "+FLAGS", "\\Seen"), "mark email as read")
             imap.logout()
     except imaplib.IMAP4.error as exc:
         raise EmailReceiveError(str(exc)) from exc
     except OSError as exc:
         raise EmailReceiveError(str(exc)) from exc
 
-    return {"count": len(emails), "emails": emails}
+    return {"count": len(emails), "marked_read": should_mark_read, "emails": emails}
 
 
 def _clean_email(value: str) -> str:
