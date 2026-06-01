@@ -5,9 +5,11 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, Too
 from app.agents.executor import (
     AGENT_SYSTEM_PROMPT,
     _extract_artifacts,
+    _has_excel_artifact,
     _inject_context_message,
     _message_from_payload,
     _normalize_stream_event,
+    _requires_excel_artifact,
     build_agent_messages,
     build_runtime_context,
 )
@@ -89,6 +91,17 @@ def test_extract_artifacts_from_tool_messages() -> None:
     )
     artifacts = _extract_artifacts([ToolMessage(content=content, tool_call_id="1"), AIMessage(content="done")])
     assert artifacts[0]["kind"] == "word"
+
+
+def test_excel_artifact_retry_detection_requires_explicit_delivery_request() -> None:
+    assert _requires_excel_artifact([HumanMessage(content="Modify the Excel file and return an Excel artifact.")])
+    assert _requires_excel_artifact([HumanMessage(content="必须调用 edit_uploaded_excel_cells 返回 Excel artifact。")])
+    assert not _requires_excel_artifact([HumanMessage(content="Summarize the Excel workbook.")])
+
+
+def test_has_excel_artifact_detects_tool_result() -> None:
+    content = json.dumps({"ok": True, "artifact": {"id": 2, "kind": "excel"}})
+    assert _has_excel_artifact([ToolMessage(content=content, tool_call_id="2")])
 
 
 def test_stream_event_normalization_for_message_chunks() -> None:

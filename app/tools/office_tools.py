@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
@@ -19,9 +19,16 @@ from app.tools.email_tools import (
     fetch_unread_email_messages,
     send_email_message,
 )
-from app.tools.excel_tools import analyze_excel_file, generate_excel_chart_image
+from app.tools.excel_tools import (
+    analyze_excel_file,
+    filter_excel_rows,
+    generate_excel_chart_image,
+    lookup_excel_value,
+    read_excel_range_data,
+    sum_excel_range,
+)
 from app.tools.json_utils import fail, ok
-from app.tools.output_tools import generate_excel, generate_word
+from app.tools.output_tools import edit_excel_cells, fill_excel_formula, generate_excel, generate_word, write_excel_range
 
 
 # 通用搜索工具的入参模型。
@@ -102,6 +109,68 @@ class GenerateExcelInput(BaseModel):
     highlight_lt: float | None = Field(default=None, description="可选。数值小于该阈值时标红，例如 1000")
     highlight_column: str | None = Field(default=None, description="可选。只按指定列判断，例如 销售额、B、2")
     highlight_scope: Literal["row", "cell"] = Field(default="row", description="标红范围：row 标红整行，cell 只标红超阈值单元格")
+
+
+class ExcelCellUpdate(BaseModel):
+    cell: str = Field(description="需要写入的单元格地址，例如 B7、J2")
+    value: Any = Field(description="写入值。可以是文本、数字、布尔值或以 = 开头的 Excel 公式")
+    sheet_name: str | None = Field(default=None, description="可选。工作表名称；不传时使用当前活动工作表")
+
+
+class EditExcelCellsInput(BaseModel):
+    file_id: int = Field(description="需要修改的已上传 Excel 文件 ID")
+    filename: str = Field(default="edited_workbook.xlsx", description="生成的 Excel 文件名")
+    updates: list[ExcelCellUpdate] = Field(min_length=1, description="要写入的单元格更新列表")
+
+
+class ReadExcelRangeInput(BaseModel):
+    file_id: int = Field(description="已上传 Excel 文件 ID")
+    cell_range: str = Field(description="读取区域，例如 A1:F20")
+    sheet_name: str | None = Field(default=None, description="可选。工作表名称")
+    data_only: bool = Field(default=True, description="是否读取公式计算后的值；false 时读取公式文本")
+    max_cells: int = Field(default=2000, ge=1, le=10000, description="最多读取多少个单元格")
+
+
+class SumExcelRangeInput(BaseModel):
+    file_id: int = Field(description="已上传 Excel 文件 ID")
+    sum_range: str = Field(description="求和区域，例如 B2:B12")
+    sheet_name: str | None = Field(default=None, description="可选。工作表名称")
+    criteria_range: str | None = Field(default=None, description="可选。条件区域，例如 A2:A12")
+    criteria: Any | None = Field(default=None, description="可选。条件值，例如 111111")
+
+
+class LookupExcelValueInput(BaseModel):
+    file_id: int = Field(description="已上传 Excel 文件 ID")
+    lookup_value: Any = Field(description="查找值")
+    lookup_range: str = Field(description="查找区域，例如 A2:A12")
+    result_range: str = Field(description="返回值区域，例如 B2:B12")
+    sheet_name: str | None = Field(default=None, description="可选。工作表名称")
+
+
+class FilterExcelRowsInput(BaseModel):
+    file_id: int = Field(description="已上传 Excel 文件 ID")
+    data_range: str = Field(description="包含表头的数据区域，例如 A1:C200")
+    column: str = Field(description="筛选列名、列字母或从 1 开始的列序号")
+    operator: Literal["eq", "neq", "contains", "gt", "gte", "lt", "lte"] = Field(description="筛选操作")
+    value: Any = Field(description="筛选值")
+    sheet_name: str | None = Field(default=None, description="可选。工作表名称")
+    limit: int = Field(default=200, ge=1, le=1000, description="最多返回多少行")
+
+
+class WriteExcelRangeInput(BaseModel):
+    file_id: int = Field(description="需要修改的已上传 Excel 文件 ID")
+    filename: str = Field(default="edited_workbook.xlsx", description="生成的 Excel 文件名")
+    start_cell: str = Field(description="写入起始单元格，例如 B2")
+    values: list[list[Any]] = Field(min_length=1, description="按行提供二维值列表")
+    sheet_name: str | None = Field(default=None, description="可选。工作表名称")
+
+
+class FillExcelFormulaInput(BaseModel):
+    file_id: int = Field(description="需要修改的已上传 Excel 文件 ID")
+    filename: str = Field(default="formula_workbook.xlsx", description="生成的 Excel 文件名")
+    cell_range: str = Field(description="填充区域，例如 C2:C20")
+    formula: str = Field(description="左上角单元格使用的 Excel 公式，必须以 = 开头")
+    sheet_name: str | None = Field(default=None, description="可选。工作表名称")
 
 
 class SendEmailInput(BaseModel):
@@ -338,6 +407,123 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
         db.refresh(artifact)
         return _artifact_result(artifact, public_base_url)
 
+    def edit_uploaded_excel_cells(file_id: int, filename: str, updates: list[dict[str, Any]]) -> str:
+        record = db.get(FileRecord, file_id)
+        if not record:
+            return fail("file not found", file_id=file_id)
+        suffix = Path(record.path).suffix.lower()
+        if suffix not in {".xlsx", ".xlsm"}:
+            return fail("file is not an Excel workbook", file_id=file_id, suffix=suffix)
+        try:
+            normalized_updates = [
+                update.model_dump() if isinstance(update, BaseModel) else update
+                for update in updates
+            ]
+            path = edit_excel_cells(record.path, filename, normalized_updates)
+        except Exception as exc:
+            return fail(str(exc), file_id=file_id)
+        artifact = TaskArtifact(kind="excel", file_id=record.id, path=str(path))
+        db.add(artifact)
+        db.commit()
+        db.refresh(artifact)
+        return _artifact_result(artifact, public_base_url)
+
+    def read_excel_range(
+        file_id: int,
+        cell_range: str,
+        sheet_name: str | None = None,
+        data_only: bool = True,
+        max_cells: int = 2000,
+    ) -> str:
+        record = _excel_record(db, file_id)
+        if not record:
+            return fail("Excel file not found", file_id=file_id)
+        try:
+            return ok(read_excel_range_data(record.path, cell_range, sheet_name, data_only, max_cells))
+        except Exception as exc:
+            return fail(str(exc), file_id=file_id)
+
+    def calculate_excel_sum(
+        file_id: int,
+        sum_range: str,
+        sheet_name: str | None = None,
+        criteria_range: str | None = None,
+        criteria: Any | None = None,
+    ) -> str:
+        record = _excel_record(db, file_id)
+        if not record:
+            return fail("Excel file not found", file_id=file_id)
+        try:
+            return ok(sum_excel_range(record.path, sum_range, sheet_name, criteria_range, criteria))
+        except Exception as exc:
+            return fail(str(exc), file_id=file_id)
+
+    def lookup_excel(
+        file_id: int,
+        lookup_value: Any,
+        lookup_range: str,
+        result_range: str,
+        sheet_name: str | None = None,
+    ) -> str:
+        record = _excel_record(db, file_id)
+        if not record:
+            return fail("Excel file not found", file_id=file_id)
+        try:
+            return ok(lookup_excel_value(record.path, lookup_value, lookup_range, result_range, sheet_name))
+        except Exception as exc:
+            return fail(str(exc), file_id=file_id)
+
+    def filter_excel(
+        file_id: int,
+        data_range: str,
+        column: str,
+        operator: str,
+        value: Any,
+        sheet_name: str | None = None,
+        limit: int = 200,
+    ) -> str:
+        record = _excel_record(db, file_id)
+        if not record:
+            return fail("Excel file not found", file_id=file_id)
+        try:
+            return ok(filter_excel_rows(record.path, data_range, column, operator, value, sheet_name, limit))
+        except Exception as exc:
+            return fail(str(exc), file_id=file_id)
+
+    def write_uploaded_excel_range(
+        file_id: int,
+        filename: str,
+        start_cell: str,
+        values: list[list[Any]],
+        sheet_name: str | None = None,
+    ) -> str:
+        record = _excel_record(db, file_id)
+        if not record:
+            return fail("Excel file not found", file_id=file_id)
+        try:
+            path = write_excel_range(record.path, filename, start_cell, values, sheet_name)
+        except Exception as exc:
+            return fail(str(exc), file_id=file_id)
+        return _save_excel_artifact(db, record, path, public_base_url)
+
+    def fill_uploaded_excel_formula(
+        file_id: int,
+        filename: str,
+        cell_range: str,
+        formula: str,
+        sheet_name: str | None = None,
+    ) -> str:
+        record = _excel_record(db, file_id)
+        if not record:
+            return fail("Excel file not found", file_id=file_id)
+        if not formula.strip().startswith("="):
+            return fail("formula must start with =", file_id=file_id)
+        try:
+            path = fill_excel_formula(record.path, filename, cell_range, formula, sheet_name)
+        except Exception as exc:
+            return fail(str(exc), file_id=file_id)
+        return _save_excel_artifact(db, record, path, public_base_url)
+
     def send_email(
         to: str,
         subject: str = "LongChain Office Agent",
@@ -415,6 +601,42 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
             args_schema=GenerateExcelChartInput,
         ),
         StructuredTool.from_function(
+            name="read_excel_range",
+            description="Read an exact Excel range. Use this before calculating or writing when the target cells are not already known.",
+            func=read_excel_range,
+            args_schema=ReadExcelRangeInput,
+        ),
+        StructuredTool.from_function(
+            name="calculate_excel_sum",
+            description="Calculate a numeric Excel range sum, optionally restricted by an aligned criteria range and criteria value.",
+            func=calculate_excel_sum,
+            args_schema=SumExcelRangeInput,
+        ),
+        StructuredTool.from_function(
+            name="lookup_excel",
+            description="Find a value in one Excel range and return the aligned value from another range. Use this for exact lookup tasks.",
+            func=lookup_excel,
+            args_schema=LookupExcelValueInput,
+        ),
+        StructuredTool.from_function(
+            name="filter_excel",
+            description="Filter tabular Excel rows by a column and operator. The data range must include a header row.",
+            func=filter_excel,
+            args_schema=FilterExcelRowsInput,
+        ),
+        StructuredTool.from_function(
+            name="write_uploaded_excel_range",
+            description="Copy an uploaded Excel workbook, write a rectangular matrix starting at one cell, and return an Excel artifact. Prefer this for contiguous output regions.",
+            func=write_uploaded_excel_range,
+            args_schema=WriteExcelRangeInput,
+        ),
+        StructuredTool.from_function(
+            name="fill_uploaded_excel_formula",
+            description="Copy an uploaded Excel workbook, translate and fill an Excel formula across a range, recalculate cached values, and return an Excel artifact.",
+            func=fill_uploaded_excel_formula,
+            args_schema=FillExcelFormulaInput,
+        ),
+        StructuredTool.from_function(
             name="list_pdf_tables",
             description="列出指定 PDF 中已结构化抽取到的表格编号、标题、页码和置信度。用户询问 PDF 表格数据时应先调用。",
             func=list_pdf_tables,
@@ -451,6 +673,16 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
             args_schema=GenerateExcelInput,
         ),
         StructuredTool.from_function(
+            name="edit_uploaded_excel_cells",
+            description=(
+                "复制已上传的 Excel 工作簿并修改指定单元格，返回新的 Excel artifact。"
+                "用户要求补公式、修复单元格、批量填充结果或修改现有工作簿时使用。"
+                "updates 必须逐项给出 cell、value；需要指定工作表时传 sheet_name。"
+            ),
+            func=edit_uploaded_excel_cells,
+            args_schema=EditExcelCellsInput,
+        ),
+        StructuredTool.from_function(
             name="send_email",
             description=(
                 "发送电子邮件。用户明确要求给某个邮箱发送邮件时必须调用此工具。"
@@ -478,6 +710,21 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
 # 把数据库中的 artifact 记录转换成工具返回给 Agent 的 JSON 字符串。
 # 同时提供相对下载地址和绝对下载地址；
 # 如果 public_base_url 为空，就只返回相对路径。
+def _excel_record(db: Session, file_id: int) -> FileRecord | None:
+    record = db.get(FileRecord, file_id)
+    if not record or Path(record.path).suffix.lower() not in {".xlsx", ".xlsm"}:
+        return None
+    return record
+
+
+def _save_excel_artifact(db: Session, record: FileRecord, path: Path, public_base_url: str) -> str:
+    artifact = TaskArtifact(kind="excel", file_id=record.id, path=str(path))
+    db.add(artifact)
+    db.commit()
+    db.refresh(artifact)
+    return _artifact_result(artifact, public_base_url)
+
+
 def _artifact_result(artifact: TaskArtifact, public_base_url: str, metadata: dict | None = None) -> str:
     download_url = f"/api/files/artifacts/{artifact.id}/download"
     absolute_url = f"{public_base_url.rstrip('/')}{download_url}" if public_base_url else download_url

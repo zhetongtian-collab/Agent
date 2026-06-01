@@ -1,10 +1,16 @@
+from datetime import datetime
 from pathlib import Path
 import re
+import shutil
+import subprocess
+import tempfile
 from uuid import uuid4
 
 from docx import Document
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
+from openpyxl.formula.translate import Translator
 from openpyxl.styles import PatternFill
+from openpyxl.utils.cell import get_column_letter, range_boundaries
 
 from app.core.config import settings
 
@@ -68,9 +74,132 @@ def generate_excel(
     return path
 
 
+def edit_excel_cells(source_path: str | Path, filename: str, updates: list[dict]) -> Path:
+    settings.artifact_dir.mkdir(parents=True, exist_ok=True)
+    path = settings.artifact_dir / f"{_safe_stem(filename)}-{uuid4().hex[:8]}.xlsx"
+    shutil.copy2(source_path, path)
+    workbook = load_workbook(path)
+    for update in updates:
+        sheet_name = str(update.get("sheet_name") or "").strip()
+        sheet = workbook[sheet_name] if sheet_name else workbook.active
+        sheet[str(update["cell"]).strip()] = _normalize_excel_value(update.get("value"))
+    workbook.save(path)
+    workbook.close()
+    recalculate_excel_file(path)
+    return path
+
+
+def write_excel_range(
+    source_path: str | Path,
+    filename: str,
+    start_cell: str,
+    values: list[list[object]],
+    sheet_name: str | None = None,
+) -> Path:
+    min_column, min_row, _, _ = range_boundaries(start_cell)
+    updates = []
+    for row_offset, row in enumerate(values):
+        for column_offset, value in enumerate(row):
+            updates.append(
+                {
+                    "sheet_name": sheet_name,
+                    "cell": f"{get_column_letter(min_column + column_offset)}{min_row + row_offset}",
+                    "value": value,
+                }
+            )
+    return edit_excel_cells(source_path, filename, updates)
+
+
+def fill_excel_formula(
+    source_path: str | Path,
+    filename: str,
+    cell_range: str,
+    formula: str,
+    sheet_name: str | None = None,
+) -> Path:
+    min_column, min_row, max_column, max_row = range_boundaries(cell_range)
+    origin = f"{get_column_letter(min_column)}{min_row}"
+    updates = []
+    for row in range(min_row, max_row + 1):
+        for column in range(min_column, max_column + 1):
+            coordinate = f"{get_column_letter(column)}{row}"
+            updates.append(
+                {
+                    "sheet_name": sheet_name,
+                    "cell": coordinate,
+                    "value": Translator(formula, origin=origin).translate_formula(coordinate),
+                }
+            )
+    return edit_excel_cells(source_path, filename, updates)
+
+
+def recalculate_excel_file(path: str | Path, timeout_seconds: int = 120) -> bool:
+    source = Path(path).resolve()
+    executable = _find_libreoffice()
+    if executable is None or not source.exists():
+        return False
+    with tempfile.TemporaryDirectory(prefix="longchain-lo-", dir=source.parent) as temp_dir:
+        root = Path(temp_dir)
+        input_dir = root / "input"
+        output_dir = root / "output"
+        profile_dir = root / "profile"
+        input_dir.mkdir()
+        output_dir.mkdir()
+        profile_dir.mkdir()
+        staged = input_dir / source.name
+        shutil.copy2(source, staged)
+        completed = subprocess.run(
+            [
+                str(executable),
+                f"-env:UserInstallation={profile_dir.resolve().as_uri()}",
+                "--headless",
+                "--convert-to",
+                "xlsx",
+                "--outdir",
+                str(output_dir),
+                str(staged),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        converted = output_dir / f"{staged.stem}.xlsx"
+        if completed.returncode != 0 or not converted.exists():
+            return False
+        shutil.copy2(converted, source)
+        return True
+
+
+def _find_libreoffice() -> Path | None:
+    candidates = [
+        shutil.which("soffice.com"),
+        shutil.which("soffice"),
+        r"C:\Program Files\LibreOffice\program\soffice.com",
+        r"C:\Program Files\LibreOffice\program\soffice.exe",
+        r"C:\Program Files (x86)\LibreOffice\program\soffice.com",
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return Path(candidate)
+    return None
+
+
 # 生成安全的文件主名。
 # 会去掉目录和扩展名，只保留中英文、数字、下划线和短横线等安全字符；
 # 同时限制长度，避免文件名过长或为空。
+def _normalize_excel_value(value: object) -> object:
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2})?", text):
+        return value
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return value
+
+
 def _safe_stem(filename: str) -> str:
     stem = Path(filename).stem or "artifact"
     cleaned = re.sub(r"[^\w\u4e00-\u9fff-]+", "_", stem).strip("_")

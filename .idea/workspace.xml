@@ -4,16 +4,16 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e6be2a64-bc75-48b9-a5bc-e682a11cefb9" name="更改" comment="新增了qq邮件收邮件功能">
+    <list default="true" id="e6be2a64-bc75-48b9-a5bc-e682a11cefb9" name="更改" comment="新增了qq邮件收邮件功能，并把收取的邮件标为已读防止重复收取">
       <change beforePath="$PROJECT_DIR$/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/.env.example" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/agents/executor.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/agents/executor.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/core/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/core/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/tools/email_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/tools/email_tools.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/tools/excel_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/tools/excel_tools.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/tools/office_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/tools/office_tools.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/tools/output_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/tools/output_tools.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tests/test_agent_executor.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_agent_executor.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tests/test_office_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_office_tools.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_output_tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_output_tools.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -27,7 +27,7 @@
     </option>
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="495" />
+    <option name="cachedIndexableFilesCount" value="817" />
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -105,7 +105,12 @@
       <workItem from="1779527025982" duration="2912000" />
       <workItem from="1779961739666" duration="659000" />
       <workItem from="1779962968479" duration="1655000" />
-      <workItem from="1779977438954" duration="1846000" />
+      <workItem from="1779977438954" duration="2027000" />
+      <workItem from="1780114408704" duration="1697000" />
+      <workItem from="1780210335080" duration="7701000" />
+      <workItem from="1780230649190" duration="15000" />
+      <workItem from="1780280378552" duration="4732000" />
+      <workItem from="1780287173946" duration="260000" />
     </task>
     <task id="LOCAL-00001" summary="第一次提交">
       <option name="closed" value="true" />
@@ -219,7 +224,15 @@
       <option name="project" value="LOCAL" />
       <updated>1779978697105</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="新增了qq邮件收邮件功能，并把收取的邮件标为已读防止重复收取">
+      <option name="closed" value="true" />
+      <created>1779979483894</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1779979483894</updated>
+    </task>
+    <option name="localTasksCounter" value="16" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -250,6 +263,7 @@
     <MESSAGE value="新增了qq邮件发送功能" />
     <MESSAGE value="新增了qq邮件发送功能，可以发送附件了" />
     <MESSAGE value="新增了qq邮件收邮件功能" />
-    <option name="LAST_COMMIT_MESSAGE" value="新增了qq邮件收邮件功能" />
+    <MESSAGE value="新增了qq邮件收邮件功能，并把收取的邮件标为已读防止重复收取" />
+    <option name="LAST_COMMIT_MESSAGE" value="新增了qq邮件收邮件功能，并把收取的邮件标为已读防止重复收取" />
   </component>
 </project>

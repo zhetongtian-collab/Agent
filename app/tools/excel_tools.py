@@ -6,6 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from openpyxl import load_workbook
+from openpyxl.utils.cell import range_boundaries
 
 from app.core.config import settings
 
@@ -40,6 +41,118 @@ def analyze_excel_file(path: str | Path, max_rows: int = 5) -> dict[str, Any]:
                 }
             )
         return {"sheets": sheets}
+    finally:
+        workbook.close()
+
+
+def read_excel_range_data(
+    path: str | Path,
+    cell_range: str,
+    sheet_name: str | None = None,
+    data_only: bool = True,
+    max_cells: int = 2000,
+) -> dict[str, Any]:
+    min_column, min_row, max_column, max_row = range_boundaries(cell_range)
+    cell_count = (max_column - min_column + 1) * (max_row - min_row + 1)
+    if cell_count > max_cells:
+        raise ValueError(f"区域过大：{cell_count} 个单元格，最多读取 {max_cells} 个")
+    workbook = load_workbook(path, data_only=data_only, read_only=True)
+    try:
+        sheet = workbook[sheet_name] if sheet_name else workbook.active
+        rows = [
+            [sheet.cell(row=row, column=column).value for column in range(min_column, max_column + 1)]
+            for row in range(min_row, max_row + 1)
+        ]
+        return {"sheet_name": sheet.title, "range": cell_range, "rows": rows}
+    finally:
+        workbook.close()
+
+
+def sum_excel_range(
+    path: str | Path,
+    sum_range: str,
+    sheet_name: str | None = None,
+    criteria_range: str | None = None,
+    criteria: Any | None = None,
+) -> dict[str, Any]:
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    try:
+        sheet = workbook[sheet_name] if sheet_name else workbook.active
+        sum_values = _range_values(sheet, sum_range)
+        if criteria_range:
+            criteria_values = _range_values(sheet, criteria_range)
+            if len(criteria_values) != len(sum_values):
+                raise ValueError("criteria_range 和 sum_range 必须包含相同数量的单元格")
+            selected = [
+                value
+                for value, candidate in zip(sum_values, criteria_values)
+                if _matches_filter(candidate, "eq", criteria)
+            ]
+        else:
+            selected = sum_values
+        total = sum(number for value in selected if (number := _parse_number(value)) is not None)
+        return {"sheet_name": sheet.title, "sum_range": sum_range, "criteria": criteria, "result": total}
+    finally:
+        workbook.close()
+
+
+def lookup_excel_value(
+    path: str | Path,
+    lookup_value: Any,
+    lookup_range: str,
+    result_range: str,
+    sheet_name: str | None = None,
+) -> dict[str, Any]:
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    try:
+        sheet = workbook[sheet_name] if sheet_name else workbook.active
+        lookup_values = _range_values(sheet, lookup_range)
+        result_values = _range_values(sheet, result_range)
+        if len(lookup_values) != len(result_values):
+            raise ValueError("lookup_range 和 result_range 必须包含相同数量的单元格")
+        for index, candidate in enumerate(lookup_values):
+            if _matches_filter(candidate, "eq", lookup_value):
+                return {
+                    "sheet_name": sheet.title,
+                    "lookup_value": lookup_value,
+                    "matched_index": index,
+                    "result": result_values[index],
+                }
+        return {"sheet_name": sheet.title, "lookup_value": lookup_value, "matched_index": None, "result": None}
+    finally:
+        workbook.close()
+
+
+def filter_excel_rows(
+    path: str | Path,
+    data_range: str,
+    column: str,
+    operator: str,
+    value: Any,
+    sheet_name: str | None = None,
+    limit: int = 200,
+) -> dict[str, Any]:
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    try:
+        sheet = workbook[sheet_name] if sheet_name else workbook.active
+        rows = _range_rows(sheet, data_range)
+        if not rows:
+            return {"sheet_name": sheet.title, "range": data_range, "rows": []}
+        headers = ["" if item is None else str(item) for item in rows[0]]
+        column_index = _resolve_column(column, headers, default=0)
+        matches = [
+            row
+            for row in rows[1:]
+            if column_index < len(row) and _matches_filter(row[column_index], operator, value)
+        ]
+        return {
+            "sheet_name": sheet.title,
+            "range": data_range,
+            "headers": headers,
+            "matched_count": len(matches),
+            "rows": matches[:limit],
+            "truncated": len(matches) > limit,
+        }
     finally:
         workbook.close()
 
@@ -116,6 +229,45 @@ def _read_table(sheet: Any, max_rows: int) -> list[list[Any]]:
         if len(rows) >= max_rows + 1:
             break
     return rows
+
+
+def _range_rows(sheet: Any, cell_range: str) -> list[list[Any]]:
+    min_column, min_row, max_column, max_row = range_boundaries(cell_range)
+    return [
+        [sheet.cell(row=row, column=column).value for column in range(min_column, max_column + 1)]
+        for row in range(min_row, max_row + 1)
+    ]
+
+
+def _range_values(sheet: Any, cell_range: str) -> list[Any]:
+    return [value for row in _range_rows(sheet, cell_range) for value in row]
+
+
+def _matches_filter(candidate: Any, operator: str, expected: Any) -> bool:
+    normalized_operator = operator.strip().lower()
+    if normalized_operator in {"eq", "="}:
+        return _normalize_compare(candidate) == _normalize_compare(expected)
+    if normalized_operator in {"neq", "!=", "<>"}:
+        return _normalize_compare(candidate) != _normalize_compare(expected)
+    if normalized_operator == "contains":
+        return _normalize_compare(expected) in _normalize_compare(candidate)
+    candidate_number = _parse_number(candidate)
+    expected_number = _parse_number(expected)
+    if candidate_number is None or expected_number is None:
+        return False
+    if normalized_operator in {"gt", ">"}:
+        return candidate_number > expected_number
+    if normalized_operator in {"gte", ">="}:
+        return candidate_number >= expected_number
+    if normalized_operator in {"lt", "<"}:
+        return candidate_number < expected_number
+    if normalized_operator in {"lte", "<="}:
+        return candidate_number <= expected_number
+    raise ValueError(f"不支持的筛选操作符：{operator}")
+
+
+def _normalize_compare(value: Any) -> str:
+    return "" if value is None else re.sub(r"\s+", "", str(value).strip().casefold())
 
 
 def _trim_row(row: list[Any]) -> list[Any]:

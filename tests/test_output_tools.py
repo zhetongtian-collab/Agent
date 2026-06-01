@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 
 from app.tools import output_tools
 
@@ -98,4 +98,23 @@ def test_generate_excel_can_highlight_only_cells(tmp_path: Path, monkeypatch) ->
 
     assert sheet["A2"].fill.fgColor.rgb != "FFFF9999"
     assert sheet["B2"].fill.fgColor.rgb == "FFFF9999"
+    workbook.close()
+
+
+def test_edit_excel_cells_writes_iso_dates_as_excel_dates(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(output_tools.settings, "artifact_dir", tmp_path / "artifacts")
+    monkeypatch.setattr(output_tools, "recalculate_excel_file", lambda path: True)
+    source = tmp_path / "source.xlsx"
+    workbook = Workbook()
+    workbook.save(source)
+
+    edited = output_tools.edit_excel_cells(
+        source,
+        "edited.xlsx",
+        [{"cell": "A1", "value": "2021-12-04 00:00:00"}, {"cell": "A2", "value": "plain text"}],
+    )
+
+    workbook = load_workbook(edited)
+    assert workbook.active["A1"].value.isoformat() == "2021-12-04T00:00:00"
+    assert workbook.active["A2"].value == "plain text"
     workbook.close()

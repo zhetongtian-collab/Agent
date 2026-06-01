@@ -237,6 +237,125 @@ def test_generate_excel_tool_uses_named_highlight_column(tmp_path: Path, monkeyp
     workbook.close()
 
 
+def test_edit_excel_cells_tool_copies_workbook_and_updates_cells(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(output_tools.settings, "artifact_dir", tmp_path / "artifacts")
+    monkeypatch.setattr(output_tools, "recalculate_excel_file", lambda path: True)
+    source = tmp_path / "source.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "数据"
+    sheet["A1"] = "名称"
+    sheet["B2"] = "旧值"
+    workbook.save(source)
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as db:
+        record = FileRecord(filename="source.xlsx", path=str(source), extracted_text="名称")
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+        result = json.loads(
+            _tool_by_name(build_office_tools(db), "edit_uploaded_excel_cells").invoke(
+                {
+                    "file_id": record.id,
+                    "filename": "edited.xlsx",
+                    "updates": [{"sheet_name": "数据", "cell": "B2", "value": "新值"}],
+                }
+            )
+        )
+
+    edited = load_workbook(result["artifact"]["path"])
+    assert result["ok"] is True
+    assert result["artifact"]["kind"] == "excel"
+    assert edited["数据"]["B2"].value == "新值"
+    edited.close()
+
+
+def test_excel_range_tools_read_calculate_lookup_filter_and_write(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(output_tools.settings, "artifact_dir", tmp_path / "artifacts")
+    monkeypatch.setattr(output_tools, "recalculate_excel_file", lambda path: True)
+    source = tmp_path / "source.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["team", "amount"])
+    sheet.append(["A", 10])
+    sheet.append(["B", 20])
+    sheet.append(["A", 30])
+    workbook.save(source)
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        record = FileRecord(filename="source.xlsx", path=str(source), extracted_text="team | amount")
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+        tools = build_office_tools(db)
+        read_result = json.loads(
+            _tool_by_name(tools, "read_excel_range").invoke({"file_id": record.id, "cell_range": "A1:B4"})
+        )
+        sum_result = json.loads(
+            _tool_by_name(tools, "calculate_excel_sum").invoke(
+                {"file_id": record.id, "sum_range": "B2:B4", "criteria_range": "A2:A4", "criteria": "A"}
+            )
+        )
+        lookup_result = json.loads(
+            _tool_by_name(tools, "lookup_excel").invoke(
+                {"file_id": record.id, "lookup_value": "B", "lookup_range": "A2:A4", "result_range": "B2:B4"}
+            )
+        )
+        filter_result = json.loads(
+            _tool_by_name(tools, "filter_excel").invoke(
+                {"file_id": record.id, "data_range": "A1:B4", "column": "amount", "operator": "gte", "value": 20}
+            )
+        )
+        write_result = json.loads(
+            _tool_by_name(tools, "write_uploaded_excel_range").invoke(
+                {"file_id": record.id, "filename": "written.xlsx", "start_cell": "D2", "values": [[40], [50]]}
+            )
+        )
+
+    assert read_result["rows"][2] == ["B", 20]
+    assert sum_result["result"] == 40
+    assert lookup_result["result"] == 20
+    assert filter_result["matched_count"] == 2
+    written = load_workbook(write_result["artifact"]["path"])
+    assert written.active["D2"].value == 40
+    assert written.active["D3"].value == 50
+    written.close()
+
+
+def test_fill_excel_formula_tool_translates_formula(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(output_tools.settings, "artifact_dir", tmp_path / "artifacts")
+    monkeypatch.setattr(output_tools, "recalculate_excel_file", lambda path: True)
+    source = tmp_path / "source.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet["A2"] = 3
+    sheet["A3"] = 4
+    workbook.save(source)
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        record = FileRecord(filename="source.xlsx", path=str(source), extracted_text="values")
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+        result = json.loads(
+            _tool_by_name(build_office_tools(db), "fill_uploaded_excel_formula").invoke(
+                {"file_id": record.id, "filename": "formula.xlsx", "cell_range": "B2:B3", "formula": "=A2*2"}
+            )
+        )
+
+    edited = load_workbook(result["artifact"]["path"], data_only=False)
+    assert edited.active["B2"].value == "=A2*2"
+    assert edited.active["B3"].value == "=A3*2"
+    edited.close()
+
+
 def test_send_email_tool_uses_configured_smtp_with_attachments(tmp_path: Path, monkeypatch) -> None:
     sent_messages = []
     smtp_logins = []

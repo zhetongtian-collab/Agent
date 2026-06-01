@@ -46,7 +46,28 @@ Excel 图表规则：
 2. 如果本轮只选择了一个 Excel 文件，直接使用该文件 ID；如果选择了多个 Excel 文件且目标不明确，先询问用户要使用哪个文件。
 3. 折线图或趋势图使用 chart_type="line"，柱状图使用 chart_type="bar"。只有工具返回图表 artifact 后，才能说明图表已生成。
 4. 系统已经支持生成图表图片并在对话窗口直接展示；不要说只能读取 Excel、生成 Word/Excel 或让用户本地绘图。
+
+Excel 单元格编辑规则：
+1. 用户要求修改现有 Excel、补公式、修复单元格或填充指定区域时，必须调用 edit_uploaded_excel_cells。
+2. 使用用户本轮选中的 Excel 文件 ID，并在 updates 中逐项填写 cell、value；需要指定工作表时填写 sheet_name。
+3. 如果任务要求填写计算结果，可以直接把计算后的值写入单元格；如果用户明确要求公式，则把以 = 开头的 Excel 公式写入 value。
+4. 只有工具返回 Excel artifact 后，才能说明修改后的工作簿已经生成。
 """
+
+
+AGENT_SYSTEM_PROMPT += """
+
+Excel artifact delivery rules:
+1. For exact Excel work, use read_excel_range, calculate_excel_sum, lookup_excel, or filter_excel when they reduce manual reasoning.
+2. For contiguous result regions, prefer write_uploaded_excel_range. For translated formulas across a region, prefer fill_uploaded_excel_formula. Use edit_uploaded_excel_cells for scattered cells.
+3. Any request to modify an uploaded Excel workbook is complete only after an Excel artifact tool returns an artifact. Do not stop after analysis or arithmetic.
+"""
+
+
+EXCEL_ARTIFACT_RETRY_PROMPT = """The requested Excel workbook has not been delivered yet.
+Continue the task now. Use an Excel artifact-producing tool such as write_uploaded_excel_range,
+fill_uploaded_excel_formula, edit_uploaded_excel_cells, or generate_excel_table. Return the modified
+Excel artifact before finishing. Do not stop after explaining the result."""
 
 
 CHECKPOINTER = InMemorySaver()
@@ -86,12 +107,20 @@ def run_office_agent(
         middleware=[inject_runtime_context],
         checkpointer=CHECKPOINTER,
     )
+    config = {"configurable": {"thread_id": session_id}}
     result = agent.invoke(
         {"messages": messages},
-        config={"configurable": {"thread_id": session_id}},
+        config=config,
         context=runtime_context or {},
     )
     output_messages = result.get("messages", []) if isinstance(result, dict) else []
+    if _requires_excel_artifact(messages) and not _has_excel_artifact(output_messages):
+        result = agent.invoke(
+            {"messages": [HumanMessage(content=EXCEL_ARTIFACT_RETRY_PROMPT)]},
+            config=config,
+            context=runtime_context or {},
+        )
+        output_messages = result.get("messages", []) if isinstance(result, dict) else []
     answer = _last_ai_text(output_messages)
     artifacts = _extract_artifacts(output_messages)
     return {"answer": answer, "artifacts": artifacts, "messages": output_messages}
@@ -146,7 +175,20 @@ def stream_office_agent(
             collected_messages.extend(_messages_from_update(payload))
 
     artifacts = _extract_artifacts(collected_messages)
-    answer = "".join(answer_parts).strip() or _last_ai_text(collected_messages)
+    retry_answer = ""
+    if _requires_excel_artifact(messages) and not _has_excel_artifact(collected_messages):
+        retry_result = agent.invoke(
+            {"messages": [HumanMessage(content=EXCEL_ARTIFACT_RETRY_PROMPT)]},
+            config={"configurable": {"thread_id": session_id}},
+            context=runtime_context or {},
+        )
+        retry_messages = retry_result.get("messages", []) if isinstance(retry_result, dict) else []
+        collected_messages.extend(retry_messages)
+        retry_answer = _last_ai_text(retry_messages)
+        artifacts = _extract_artifacts(collected_messages)
+        for artifact in artifacts:
+            yield {"type": "artifact", "artifact": artifact}
+    answer = retry_answer or "".join(answer_parts).strip() or _last_ai_text(collected_messages)
     yield {"type": "done", "answer": answer, "artifacts": artifacts}
 
 
@@ -234,6 +276,31 @@ def _content_to_text(content: Any) -> str:
 # 从所有消息里提取工具生成的 artifact 信息。
 # 工具返回内容可能是 JSON 字符串，如果其中包含 artifact 字段，
 # 就收集起来，并避免重复添加同一个 artifact。
+def _requires_excel_artifact(messages: list[BaseMessage]) -> bool:
+    text = "\n".join(
+        _content_to_text(message.content)
+        for message in messages
+        if isinstance(message, HumanMessage)
+    ).casefold()
+    excel_markers = (
+        "excel artifact",
+        "edit_uploaded_excel_cells",
+        "write_uploaded_excel_range",
+        "fill_uploaded_excel_formula",
+        "生成 excel",
+        "修改选中的 excel",
+        "修改当前 excel",
+        "修改现有 excel",
+        "补公式",
+        "填充指定区域",
+    )
+    return "excel" in text and any(marker in text for marker in excel_markers)
+
+
+def _has_excel_artifact(messages: list[BaseMessage]) -> bool:
+    return any(artifact.get("kind") == "excel" for artifact in _extract_artifacts(messages))
+
+
 def _extract_artifacts(messages: list[BaseMessage]) -> list[dict[str, Any]]:
     artifacts: list[dict[str, Any]] = []
     for message in messages:
