@@ -52,7 +52,8 @@ def read_excel_range_data(
     data_only: bool = True,
     max_cells: int = 2000,
 ) -> dict[str, Any]:
-    min_column, min_row, max_column, max_row = range_boundaries(cell_range)
+    normalized_range = _validate_cell_range(cell_range)
+    min_column, min_row, max_column, max_row = range_boundaries(normalized_range)
     cell_count = (max_column - min_column + 1) * (max_row - min_row + 1)
     if cell_count > max_cells:
         raise ValueError(f"区域过大：{cell_count} 个单元格，最多读取 {max_cells} 个")
@@ -63,7 +64,7 @@ def read_excel_range_data(
             [sheet.cell(row=row, column=column).value for column in range(min_column, max_column + 1)]
             for row in range(min_row, max_row + 1)
         ]
-        return {"sheet_name": sheet.title, "range": cell_range, "rows": rows}
+        return {"sheet_name": sheet.title, "range": normalized_range, "rows": rows}
     finally:
         workbook.close()
 
@@ -232,7 +233,8 @@ def _read_table(sheet: Any, max_rows: int) -> list[list[Any]]:
 
 
 def _range_rows(sheet: Any, cell_range: str) -> list[list[Any]]:
-    min_column, min_row, max_column, max_row = range_boundaries(cell_range)
+    normalized_range = _validate_cell_range(cell_range)
+    min_column, min_row, max_column, max_row = range_boundaries(normalized_range)
     return [
         [sheet.cell(row=row, column=column).value for column in range(min_column, max_column + 1)]
         for row in range(min_row, max_row + 1)
@@ -241,6 +243,19 @@ def _range_rows(sheet: Any, cell_range: str) -> list[list[Any]]:
 
 def _range_values(sheet: Any, cell_range: str) -> list[Any]:
     return [value for row in _range_rows(sheet, cell_range) for value in row]
+
+
+def _validate_cell_range(cell_range: str) -> str:
+    normalized = str(cell_range or "").strip().upper()
+    if "!" in normalized:
+        _, normalized = normalized.rsplit("!", 1)
+    try:
+        min_column, min_row, max_column, max_row = range_boundaries(normalized)
+    except (IndexError, TypeError, ValueError) as exc:
+        raise ValueError("Excel 区域格式无效，请使用完整区域，例如 A1:F20") from exc
+    if None in {min_column, min_row, max_column, max_row}:
+        raise ValueError("Excel 区域必须同时包含起止行和列，例如 A1:F20")
+    return normalized
 
 
 def _matches_filter(candidate: Any, operator: str, expected: Any) -> bool:

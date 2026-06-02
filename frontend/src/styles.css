@@ -361,6 +361,75 @@ textarea {
   color: #5b665f;
 }
 
+.task-trace {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 13px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e1e6df;
+}
+
+.task-trace-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #385448;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.task-step-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-step {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+  color: #6d776f;
+  font-size: 13px;
+}
+
+.task-step > svg {
+  margin-top: 3px;
+}
+
+.task-step-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.task-step-main small {
+  flex: 0 0 auto;
+  color: inherit;
+  font-size: 12px;
+}
+
+.task-step p {
+  margin: 2px 0 0;
+  color: #7a857e;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.task-step.running {
+  color: #1a694a;
+}
+
+.task-step.success {
+  color: #25704f;
+}
+
+.task-step.failed {
+  color: #a2352a;
+}
+
 .artifact-list {
   display: flex;
   flex-wrap: wrap;

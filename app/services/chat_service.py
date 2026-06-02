@@ -61,25 +61,32 @@ class ChatService:
         artifacts: list[dict[str, Any]] = []
 
         try:
-            for event in stream_office_agent(
-                model=llm,
-                tools=build_office_tools(self.db, public_base_url="http://localhost:8000"),
-                messages=context["messages"],
-                session_id=request.session_id,
-                runtime_context=context["runtime_context"],
-            ):
-                if event["type"] == "token":
-                    answer += str(event["content"])
-                elif event["type"] == "artifact":
-                    artifact = event["artifact"]
-                    if artifact not in artifacts:
-                        artifacts.append(artifact)
-                elif event["type"] == "done":
-                    answer = str(event.get("answer") or answer)
-                    for artifact in event.get("artifacts", []):
+            try:
+                for event in stream_office_agent(
+                    model=llm,
+                    tools=build_office_tools(self.db, public_base_url="http://localhost:8000"),
+                    messages=context["messages"],
+                    session_id=request.session_id,
+                    runtime_context=context["runtime_context"],
+                ):
+                    if event["type"] == "token":
+                        answer += str(event["content"])
+                    elif event["type"] == "artifact":
+                        artifact = event["artifact"]
                         if artifact not in artifacts:
                             artifacts.append(artifact)
-                yield event
+                    elif event["type"] == "done":
+                        answer = str(event.get("answer") or answer)
+                        for artifact in event.get("artifacts", []):
+                            if artifact not in artifacts:
+                                artifacts.append(artifact)
+                    yield event
+            except Exception as exc:
+                fallback = _selected_file_read_fallback(request.message, context["selected_files"], str(exc))
+                if not fallback:
+                    raise
+                answer = fallback
+                yield {"type": "done", "answer": fallback, "artifacts": artifacts}
         finally:
             if answer.strip():
                 self.memory.maybe_update_from_conversation(request.message, answer)
@@ -95,6 +102,7 @@ class ChatService:
         memory_contents = [item.content for item in memories]
         return {
             "memory_contents": memory_contents,
+            "selected_files": file_context,
             "messages": build_agent_messages(user_message=request.message),
             "runtime_context": build_runtime_context(
                 memories=memory_contents,
@@ -110,3 +118,19 @@ class ChatService:
         if not file_ids:
             return []
         return list(self.db.scalars(select(FileRecord).where(FileRecord.id.in_(file_ids))).all())
+
+
+def _selected_file_read_fallback(message: str, files: list[FileRecord], error: str) -> str:
+    normalized = message.casefold()
+    read_markers = ("读取", "读一下", "查看", "内容", "信息")
+    if not files or not any(marker in normalized for marker in read_markers):
+        return ""
+    sections = []
+    for file in files:
+        content = (file.extracted_text or "").strip()
+        sections.append(f"### {file.filename}\n{content or '文件中没有可展示的文本内容。'}")
+    return (
+        "模型服务暂时不可用，但已直接读取当前选中的文件。以下是文件内容：\n\n"
+        + "\n\n".join(sections)
+        + f"\n\n模型服务错误：{error}"
+    )

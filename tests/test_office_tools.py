@@ -296,6 +296,12 @@ def test_excel_range_tools_read_calculate_lookup_filter_and_write(tmp_path: Path
         read_result = json.loads(
             _tool_by_name(tools, "read_excel_range").invoke({"file_id": record.id, "cell_range": "A1:B4"})
         )
+        prefixed_read_result = json.loads(
+            _tool_by_name(tools, "read_excel_range").invoke({"file_id": record.id, "cell_range": "Sheet!A1:B4"})
+        )
+        invalid_range_result = json.loads(
+            _tool_by_name(tools, "read_excel_range").invoke({"file_id": record.id, "cell_range": "A:B"})
+        )
         sum_result = json.loads(
             _tool_by_name(tools, "calculate_excel_sum").invoke(
                 {"file_id": record.id, "sum_range": "B2:B4", "criteria_range": "A2:A4", "criteria": "A"}
@@ -318,6 +324,9 @@ def test_excel_range_tools_read_calculate_lookup_filter_and_write(tmp_path: Path
         )
 
     assert read_result["rows"][2] == ["B", 20]
+    assert prefixed_read_result["rows"][2] == ["B", 20]
+    assert invalid_range_result["ok"] is False
+    assert invalid_range_result["error"] == "Excel 区域必须同时包含起止行和列，例如 A1:F20"
     assert sum_result["result"] == 40
     assert lookup_result["result"] == 20
     assert filter_result["matched_count"] == 2

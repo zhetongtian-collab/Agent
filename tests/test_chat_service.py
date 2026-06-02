@@ -120,3 +120,33 @@ def test_chat_service_passes_distinct_session_ids_to_agent(monkeypatch) -> None:
     assert captured_session_ids == ["conversation-a", "conversation-b"]
     assert first.session_id == "conversation-a"
     assert second.session_id == "conversation-b"
+
+
+def test_chat_service_stream_reads_selected_files_when_model_connection_fails(monkeypatch) -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    class FakeVectorStore:
+        def search_documents(self, query, limit=5, file_ids=None):
+            return []
+
+    def fake_stream_office_agent(*args, **kwargs):
+        raise RuntimeError("Connection error.")
+        yield
+
+    monkeypatch.setattr("app.services.chat_service.get_qwen_chat_model", lambda: SimpleNamespace())
+    monkeypatch.setattr("app.services.chat_service.stream_office_agent", fake_stream_office_agent)
+    monkeypatch.setattr("app.services.chat_service.VectorStore", FakeVectorStore)
+
+    with Session(engine) as db:
+        record = FileRecord(filename="policy.txt", path="policy.txt", extracted_text="安全库存不得低于 100。")
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+
+        events = list(ChatService(db).stream_chat(ChatRequest(message="读取这个文件的信息", file_ids=[record.id])))
+
+    assert events[-1]["type"] == "done"
+    assert "policy.txt" in events[-1]["answer"]
+    assert "安全库存不得低于 100。" in events[-1]["answer"]
+    assert "Connection error." in events[-1]["answer"]

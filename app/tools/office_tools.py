@@ -602,7 +602,7 @@ def build_office_tools(db: Session, public_base_url: str = "") -> list[Structure
         ),
         StructuredTool.from_function(
             name="read_excel_range",
-            description="Read an exact Excel range. Use this before calculating or writing when the target cells are not already known.",
+            description="Read an exact Excel range such as A1:F20. Use analyze_excel first when the used range is unknown. Always pass both start and end rows and columns; do not pass only A:F or 1:20.",
             func=read_excel_range,
             args_schema=ReadExcelRangeInput,
         ),

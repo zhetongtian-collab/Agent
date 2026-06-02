@@ -30,6 +30,16 @@ export type ArtifactInfo = {
   metadata?: Record<string, unknown>;
 };
 
+export type TaskStepStatus = "preparing" | "running" | "success" | "failed";
+
+export type TaskStep = {
+  id: string;
+  title: string;
+  status: TaskStepStatus;
+  tool_name?: string;
+  detail?: string;
+};
+
 export async function sendChat(message: string, fileIds: number[], sessionId = "default"): Promise<ChatResponse> {
   const response = await fetch("/api/chat", {
     method: "POST",
@@ -45,6 +55,8 @@ export async function sendChat(message: string, fileIds: number[], sessionId = "
 export type ChatStreamEvent =
   | { type: "token"; content: string }
   | { type: "artifact"; artifact: ArtifactInfo }
+  | { type: "plan"; steps: TaskStep[] }
+  | { type: "step"; step: TaskStep }
   | { type: "done"; answer: string; artifacts: ArtifactInfo[] }
   | { type: "error"; message: string };
 

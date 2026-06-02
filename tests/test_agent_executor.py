@@ -12,6 +12,7 @@ from app.agents.executor import (
     _requires_excel_artifact,
     build_agent_messages,
     build_runtime_context,
+    stream_office_agent,
 )
 from app.db.models import FileRecord
 
@@ -109,3 +110,98 @@ def test_stream_event_normalization_for_message_chunks() -> None:
     mode, payload = _normalize_stream_event(("messages", (chunk, {"node": "model"})))
     assert mode == "messages"
     assert _message_from_payload(payload) == chunk
+
+
+def test_stream_office_agent_emits_plan_and_tool_step_events(monkeypatch) -> None:
+    class FakeAgent:
+        def stream(self, *args, **kwargs):
+            yield (
+                "updates",
+                {
+                    "model": {
+                        "messages": [
+                            AIMessage(
+                                content="",
+                                tool_calls=[
+                                    {
+                                        "name": "fetch_unread_emails",
+                                        "args": {},
+                                        "id": "call-email",
+                                        "type": "tool_call",
+                                    }
+                                ],
+                            )
+                        ]
+                    }
+                },
+            )
+            yield (
+                "messages",
+                (
+                    ToolMessage(
+                        content=json.dumps({"ok": True, "unread_emails": {"count": 0}}),
+                        name="fetch_unread_emails",
+                        tool_call_id="call-email",
+                    ),
+                    {"node": "tools"},
+                ),
+            )
+            yield ("messages", (AIMessageChunk(content="没有新的未读邮件。"), {"node": "model"}))
+
+    monkeypatch.setattr("app.agents.executor.create_agent", lambda **kwargs: FakeAgent())
+
+    events = list(
+        stream_office_agent(
+            model=object(),
+            tools=[],
+            messages=[HumanMessage(content="帮我收一下未读邮件")],
+            session_id="trace-test",
+        )
+    )
+
+    assert events[0]["type"] == "plan"
+    assert any(event["type"] == "step" and event["step"]["status"] == "running" for event in events)
+    assert any(event["type"] == "step" and event["step"]["status"] == "success" for event in events)
+    assert events[-1]["type"] == "done"
+
+
+def test_stream_office_agent_returns_read_content_when_followup_model_call_fails(monkeypatch) -> None:
+    class FakeAgent:
+        def stream(self, *args, **kwargs):
+            yield (
+                "messages",
+                (
+                    ToolMessage(
+                        content=json.dumps(
+                            {
+                                "ok": True,
+                                "file": {
+                                    "filename": "inventory_policy.docx",
+                                    "content": "库存低于安全库存时，需要补货。",
+                                },
+                            },
+                            ensure_ascii=False,
+                        ),
+                        name="read_file",
+                        tool_call_id="call-read",
+                    ),
+                    {"node": "tools"},
+                ),
+            )
+            raise RuntimeError("Connection error.")
+
+    monkeypatch.setattr("app.agents.executor.create_agent", lambda **kwargs: FakeAgent())
+
+    events = list(
+        stream_office_agent(
+            model=object(),
+            tools=[],
+            messages=[HumanMessage(content="读取这两个文件的信息")],
+            session_id="fallback-test",
+        )
+    )
+
+    assert events[-1]["type"] == "done"
+    assert "inventory_policy.docx" in events[-1]["answer"]
+    assert "库存低于安全库存时，需要补货。" in events[-1]["answer"]
+    assert "Connection error." in events[-1]["answer"]

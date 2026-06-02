@@ -1,7 +1,11 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertCircle,
   BarChart3,
+  CheckCircle2,
+  Circle,
   FileText,
+  ListChecks,
   Loader2,
   MessageSquare,
   Paperclip,
@@ -15,6 +19,7 @@ import {
   ArtifactInfo,
   FileInfo,
   MemoryInfo,
+  TaskStep,
   deleteFile,
   deleteMemory,
   listFiles,
@@ -28,6 +33,7 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   artifacts?: ArtifactInfo[];
+  steps?: TaskStep[];
 };
 
 type Conversation = {
@@ -169,6 +175,16 @@ export function App() {
               ...item,
               artifacts: appendArtifact(item.artifacts, event.artifact)
             }));
+          } else if (event.type === "plan") {
+            updateAssistantMessage(conversationId, assistantId, (item) => ({
+              ...item,
+              steps: event.steps
+            }));
+          } else if (event.type === "step") {
+            updateAssistantMessage(conversationId, assistantId, (item) => ({
+              ...item,
+              steps: upsertTaskStep(item.steps, event.step)
+            }));
           } else if (event.type === "done") {
             updateAssistantMessage(conversationId, assistantId, (item) => ({
               ...item,
@@ -178,7 +194,8 @@ export function App() {
           } else if (event.type === "error") {
             updateAssistantMessage(conversationId, assistantId, (item) => ({
               ...item,
-              content: item.content || `请求失败：${event.message}`
+              content: appendRequestError(item.content, event.message),
+              steps: failRunningTaskSteps(item.steps, event.message)
             }));
           }
         },
@@ -188,7 +205,8 @@ export function App() {
     } catch (error) {
       updateAssistantMessage(conversationId, assistantId, (item) => ({
         ...item,
-        content: item.content || `请求失败：${String(error)}`
+        content: appendRequestError(item.content, String(error)),
+        steps: failRunningTaskSteps(item.steps, String(error))
       }));
     } finally {
       setBusyConversationIds((current) => current.filter((id) => id !== conversationId));
@@ -383,6 +401,7 @@ export function App() {
           {(activeConversation?.messages ?? []).map((message) => (
             <article key={message.id} className={`message ${message.role}`}>
               <div className="bubble">
+                {message.role === "assistant" && message.steps?.length ? <TaskTrace steps={message.steps} /> : null}
                 <div>{message.content}</div>
                 {message.role === "assistant" && activeBusy && !message.content ? (
                   <div className="thinking">
@@ -448,6 +467,45 @@ function ArtifactView({ artifact }: { artifact: ArtifactInfo }) {
       下载{artifact.kind === "word" ? " Word" : " Excel"}文件
     </a>
   );
+}
+
+function TaskTrace({ steps }: { steps: TaskStep[] }) {
+  return (
+    <section className="task-trace">
+      <div className="task-trace-title">
+        <ListChecks size={17} />
+        <span>执行轨迹</span>
+      </div>
+      <ol className="task-step-list">
+        {steps.map((step) => (
+          <li key={step.id} className={`task-step ${step.status}`}>
+            <TaskStepIcon status={step.status} />
+            <div>
+              <div className="task-step-main">
+                <span>{step.title}</span>
+                <small>{taskStepStatusLabel(step.status)}</small>
+              </div>
+              {step.detail ? <p>{step.detail}</p> : null}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function TaskStepIcon({ status }: { status: TaskStep["status"] }) {
+  if (status === "running") return <Loader2 className="spin" size={16} />;
+  if (status === "success") return <CheckCircle2 size={16} />;
+  if (status === "failed") return <AlertCircle size={16} />;
+  return <Circle size={16} />;
+}
+
+function taskStepStatusLabel(status: TaskStep["status"]): string {
+  if (status === "running") return "执行中";
+  if (status === "success") return "成功";
+  if (status === "failed") return "失败";
+  return "准备中";
 }
 
 function getChartTitle(artifact: ArtifactInfo): string {
@@ -521,4 +579,24 @@ function mergeArtifacts(current: ArtifactInfo[] | undefined, incoming: ArtifactI
     }
   }
   return result;
+}
+
+function upsertTaskStep(current: TaskStep[] | undefined, incoming: TaskStep): TaskStep[] {
+  const steps = [...(current ?? [])];
+  const index = steps.findIndex((step) => step.id === incoming.id);
+  if (index === -1) {
+    steps.push(incoming);
+  } else {
+    steps[index] = incoming;
+  }
+  return steps;
+}
+
+function failRunningTaskSteps(current: TaskStep[] | undefined, detail: string): TaskStep[] | undefined {
+  return current?.map((step) => (step.status === "running" ? { ...step, status: "failed", detail } : step));
+}
+
+function appendRequestError(content: string, message: string): string {
+  const errorText = `请求失败：${message}`;
+  return content ? `${content}\n\n${errorText}` : errorText;
 }

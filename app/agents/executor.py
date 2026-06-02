@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, Huma
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import InMemorySaver
 
+from app.agents.task_plan import TaskPlanTracker
 from app.db.models import FileRecord
 
 
@@ -147,32 +148,53 @@ def stream_office_agent(
     )
     collected_messages: list[BaseMessage] = []
     answer_parts: list[str] = []
+    tracker = TaskPlanTracker(_last_human_text(messages))
 
-    for event in agent.stream(
-        {"messages": messages},
-        config={"configurable": {"thread_id": session_id}},
-        context=runtime_context or {},
-        stream_mode=["messages", "updates"],
-    ):
-        mode, payload = _normalize_stream_event(event)
-        if mode == "messages":
-            message = _message_from_payload(payload)
-            if message is None:
-                continue
-            if isinstance(message, AIMessageChunk):
-                token = _content_to_text(message.content)
-                if token:
-                    answer_parts.append(token)
-                    yield {"type": "token", "content": token}
-            elif isinstance(message, ToolMessage):
-                collected_messages.append(message)
-                artifact = _extract_artifact_from_text(_content_to_text(message.content))
-                if artifact:
-                    yield {"type": "artifact", "artifact": artifact}
-            elif isinstance(message, BaseMessage):
-                collected_messages.append(message)
-        elif mode == "updates":
-            collected_messages.extend(_messages_from_update(payload))
+    yield tracker.plan_event()
+    try:
+        for event in agent.stream(
+            {"messages": messages},
+            config={"configurable": {"thread_id": session_id}},
+            context=runtime_context or {},
+            stream_mode=["messages", "updates"],
+        ):
+            mode, payload = _normalize_stream_event(event)
+            if mode == "messages":
+                message = _message_from_payload(payload)
+                if message is None:
+                    continue
+                for step_event in tracker.observe_message(message):
+                    yield step_event
+                if isinstance(message, AIMessageChunk):
+                    token = _content_to_text(message.content)
+                    if token:
+                        answer_parts.append(token)
+                        yield {"type": "token", "content": token}
+                elif isinstance(message, ToolMessage):
+                    collected_messages.append(message)
+                    artifact = _extract_artifact_from_text(_content_to_text(message.content))
+                    if artifact:
+                        yield {"type": "artifact", "artifact": artifact}
+                elif isinstance(message, BaseMessage):
+                    collected_messages.append(message)
+            elif mode == "updates":
+                update_messages = _messages_from_update(payload)
+                collected_messages.extend(update_messages)
+                for message in update_messages:
+                    for step_event in tracker.observe_message(message):
+                        yield step_event
+    except Exception as exc:
+        for step_event in tracker.fail_active_events(str(exc)):
+            yield step_event
+        fallback_answer = _fallback_answer_from_tool_messages(collected_messages, str(exc))
+        if fallback_answer:
+            yield {
+                "type": "done",
+                "answer": fallback_answer,
+                "artifacts": _extract_artifacts(collected_messages),
+            }
+            return
+        raise
 
     artifacts = _extract_artifacts(collected_messages)
     retry_answer = ""
@@ -184,11 +206,16 @@ def stream_office_agent(
         )
         retry_messages = retry_result.get("messages", []) if isinstance(retry_result, dict) else []
         collected_messages.extend(retry_messages)
+        for message in retry_messages:
+            for step_event in tracker.observe_message(message):
+                yield step_event
         retry_answer = _last_ai_text(retry_messages)
         artifacts = _extract_artifacts(collected_messages)
         for artifact in artifacts:
             yield {"type": "artifact", "artifact": artifact}
     answer = retry_answer or "".join(answer_parts).strip() or _last_ai_text(collected_messages)
+    for step_event in tracker.finish_events():
+        yield step_event
     yield {"type": "done", "answer": answer, "artifacts": artifacts}
 
 
@@ -196,6 +223,13 @@ def stream_office_agent(
 # 目前只生成一条 HumanMessage，后续如果要加入历史消息，也可以从这里扩展。
 def build_agent_messages(user_message: str) -> list[BaseMessage]:
     return [HumanMessage(content=user_message)]
+
+
+def _last_human_text(messages: list[BaseMessage]) -> str:
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            return _content_to_text(message.content)
+    return ""
 
 
 # 构造 Agent 运行时上下文。
@@ -271,6 +305,54 @@ def _content_to_text(content: Any) -> str:
                 parts.append(str(item))
         return "\n".join(parts)
     return str(content)
+
+
+def _fallback_answer_from_tool_messages(messages: list[BaseMessage], error: str) -> str:
+    sections = []
+    for message in messages:
+        if not isinstance(message, ToolMessage):
+            continue
+        try:
+            payload = json.loads(_content_to_text(message.content))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict) or payload.get("ok") is not True:
+            continue
+        section = _format_read_tool_result(payload)
+        if section and section not in sections:
+            sections.append(section)
+    if not sections:
+        return ""
+    return (
+        "文件读取已完成，但后续智能整理暂时失败。以下是已经成功读取到的内容：\n\n"
+        + "\n\n".join(sections)
+        + f"\n\n后续整理失败原因：{error}"
+    )
+
+
+def _format_read_tool_result(payload: dict[str, Any]) -> str:
+    file_payload = payload.get("file")
+    if isinstance(file_payload, dict) and "content" in file_payload:
+        filename = str(file_payload.get("filename") or "未命名文件")
+        content = str(file_payload.get("content") or "")
+        return f"### {filename}\n{content or '文件内容为空。'}"
+
+    rows = payload.get("rows")
+    if isinstance(rows, list) and "range" in payload:
+        sheet_name = str(payload.get("sheet_name") or "当前工作表")
+        cell_range = str(payload.get("range") or "")
+        return f"### Excel：{sheet_name} {cell_range}\n{_format_table_rows(rows)}"
+    return ""
+
+
+def _format_table_rows(rows: list[Any]) -> str:
+    lines = []
+    for row in rows:
+        if isinstance(row, list):
+            lines.append(" | ".join("" if value is None else str(value) for value in row))
+        else:
+            lines.append(str(row))
+    return "\n".join(lines) or "区域内容为空。"
 
 
 # 从所有消息里提取工具生成的 artifact 信息。
